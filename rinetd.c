@@ -1027,7 +1027,11 @@ void handleAccept(int i)
 	struct in_addr address;
 	char const *addressText;
 	int j;
+#if HAVE_SOCKLEN_T
+	socklen_t addrlen;
+#else
 	int addrlen;
+#endif
 	int index = -1;
 	int o;
 	SOCKET nfd;

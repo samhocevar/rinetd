@@ -20,6 +20,9 @@ AC_CHECK_HEADERS([arpa/inet.h errno.h fcntl.h netdb.h netinet/in.h stdlib.h stri
 AC_C_CONST
 AC_HEADER_TIME
 AC_STRUCT_TM
+AC_CHECK_TYPES(socklen_t, [], [],
+  [#include <sys/types.h>
+   #include <sys/socket.h>])
 
 # Checks for library functions.
 AC_FUNC_FORK
