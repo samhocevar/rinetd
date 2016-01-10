@@ -1,4 +1,6 @@
-#define VERSION "0.62"
+#if HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #ifdef WIN32
 #include <windows.h>
@@ -956,7 +958,7 @@ void handleCloseFromLocal(int i)
 	closesocket(loFds[i]);
 	loClosed[i] = 1;
 	if (!reClosed[i]) {
-#ifndef LINUX 
+#ifndef __linux__
 #ifndef WIN32
 		/* Now set up the remote end for a polite closing */
 
@@ -967,7 +969,7 @@ void handleCloseFromLocal(int i)
 		setsockopt(reFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
 #endif /* WIN32 */
-#endif /* LINUX */
+#endif /* __linux__ */
 		coLog[i] = logLocalClosedFirst;
 	} 
 }
@@ -982,7 +984,7 @@ void handleCloseFromRemote(int i)
 	closesocket(reFds[i]);
 	reClosed[i] = 1;
 	if (!loClosed[i]) {
-#ifndef LINUX
+#ifndef __linux__
 #ifndef WIN32
 		/* Now set up the local end for a polite closing */
 
@@ -993,7 +995,7 @@ void handleCloseFromRemote(int i)
 		setsockopt(loFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
 #endif /* WIN32 */
-#endif /* LINUX */
+#endif /* __linux__ */
 		loClosed[i] = 0;
 		coLog[i] = logRemoteClosedFirst;
 	}
@@ -1270,13 +1272,13 @@ void openLocalFd(int se, int i)
 	memcpy(&saddr.sin_addr, &seLocalAddrs[se], sizeof(struct in_addr));
 	saddr.sin_port = seLocalPorts[se];
 #ifndef WIN32
-#ifdef LINUX
+#ifdef __linux__
 	j = 0;
 	setsockopt(loFds[i], SOL_SOCKET, SO_LINGER, &j, sizeof(j));
 #else
 	j = 1024;
 	setsockopt(loFds[i], SOL_SOCKET, SO_SNDBUF, &j, sizeof(j));
-#endif /* LINUX */
+#endif /* __linux__ */
 #endif /* WIN32 */
 	j = 1;
 	ioctlsocket(loFds[i], FIONBIO, &j);
@@ -1365,7 +1367,7 @@ void RegisterPID(void)
 		pid_file_name = pidLogFileName;
 	}
 /* add other systems with wherever they register processes */
-#if	defined(LINUX)
+#if	defined(__linux__)
 	pid_file = fopen(pid_file_name, "w");
 	if (pid_file == NULL) {
 		/* non-fatal, non-Linux may lack /var/run... */
@@ -1376,7 +1378,7 @@ void RegisterPID(void)
 		fprintf(pid_file, "%d\n", getpid());
 		fclose(pid_file);
 	}
-#endif	/* LINUX */
+#endif	/* __linux__ */
 }
 
 unsigned char nullAddress[4] = { 0, 0, 0, 0 };
@@ -1509,7 +1511,7 @@ int readArgs (int argc,
 				"manpage for more information.\n");
 			exit (0);
 			case 'v':
-			printf ("rinetd %s\n", VERSION);
+			printf ("rinetd %s\n", PACKAGE_VERSION);
 			exit (0);
 			case '?':
 			default:
