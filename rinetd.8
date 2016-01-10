@@ -12,7 +12,7 @@
 .Sh SYNOPSIS
 .Nm /usr/sbin/rinetd
 .Sh VERSION
-Version 0.41, 3/1/1998.
+Version 0.52, 9/7/1998.
 .Sh DESCRIPTION
 .Nm rinetd
 redirects TCP connections from one IP address and port to another. rinetd
@@ -21,13 +21,18 @@ the address/port pairs specified in the file /etc/rinetd.conf.
 Since rinetd runs as a single process using nonblocking I/O, it is
 able to redirect a large number of connections without a severe
 impact on the machine. This makes it practical to run TCP services
-on machines inside an IP masquerading firewall.
+on machines inside an IP masquerading firewall. rinetd does not
+redirect FTP, because FTP requires more than one socket.
 .Pp
-rinetd should be launched at boot time, using the following syntax:
+rinetd is typically launched at boot time, using the following syntax:
 .Pp
 /usr/sbin/rinetd
 .Pp
-The format of /etc/rinetd.conf is as follows:
+The configuration file is found in the file /etc/rinetd.conf, unless
+another file is specified using the -c command line option. 
+.Sh FORWARDING RULES
+Most entries in the configuration file are forwarding rules. The
+format of a forwarding rule is as follows:
 .Pp
 bindaddress bindport connectaddress connectport
 .Pp
@@ -41,38 +46,145 @@ rinetd to port 80 of the address 10.1.1.2, which would typically
 be a machine on the inside of a firewall which has no
 direct routing to the outside world.
 .Pp
+Although responding on individual interfaces rather than on all
+interfaces is one of rinetd's primary features, sometimes it is 
+preferable to respond on all IP addresses that belong to the server.
+In this situation, the special IP address 0.0.0.0
+can be used. For example:
+.Pp
+0.0.0.0 23 10.1.1.2 23
+.Pp
+Would redirect all connections to port 80, for all IP addresses
+assigned to the server. This is the default behavior for most
+other programs.
+.Pp
 Service names can be specified instead of port numbers. On most systems,
 service names are defined in the file /etc/services.
 .Pp
 Both IP addresses and hostnames are accepted for
 bindaddress and connectaddress.
 .Pp
-rinetd redirects TCP connections only. There is
-no support for UDP.
+.Sh ALLOW AND DENY RULES
+Configuration files can also contain allow and deny rules. 
 .Pp
+Allow rules which appear before the first forwarding rule are
+applied globally: if at least one global allow rule exists,
+and the address of a new connection does not
+satisfy at least one of the global allow rules, that connection
+is immediately rejected, regardless of any other rules. 
+.Pp
+Allow rules which appear after a specific forwarding rule apply 
+to that forwarding rule only. If at least one allow rule
+exists for a particular forwarding rule, and the address of a new
+connection does not satisfy at least one of the allow rules
+for that forwarding rule, that connection is immediately
+rejected, regardless of any other rules.
+.Pp
+Deny rules which appear before the first forwarding rule are
+applied globally: if the address of a new connection satisfies
+any of the global allow rules, that connection
+is immediately rejected, regardless of any other rules. 
+.Pp
+Deny rules which appear after a specific forwarding rule apply 
+to that forwarding rule only. If the address of a new
+connection satisfies any of the deny rules for that forwarding rule, 
+that connection is immediately rejected, regardless of any other rules.
+.Pp
+The format of an allow rule is as follows:
+.Pp
+allow pattern
+.Pp
+Patterns can contain the following characters: 0, 1, 2, 3, 4, 5,
+6, 7, 8, 9, . (period), ?, and *. The ? wildcard matches any one
+character. The * wildcard matches any number of characters, including
+zero. 
+.Pp
+For example:
+.Pp
+allow 206.125.69.*
+.Pp
+This allow rule matches all IP addresses in the 206.125.69 class C domain.
+.Pp
+Host names are NOT permitted in allow and deny rules. The performance
+cost of looking up IP addresses to find their corresponding names
+is prohibitive. Since rinetd is a single process server, all other
+connections would be forced to pause during the address lookup.
+.Pp
+.Sh LOGGING
+rinetd is able to produce a log file in either of two formats:
+tab-delimited and web server-style "common log format."
+.Pp
+By default, rinetd does not produce a log file. To activate logging, add 
+the following line to the configuration file:
+.Pp
+logfile log-file-location
+.Pp
+Example: logfile /var/log/rinetd.log
+.Pp
+By default, rinetd logs in a simple tab-delimited format containing
+the following information:
+.Pp
+Date and time
+.Pp
+Client address
+.Pp
+Listening host
+.Pp
+Listening port
+.Pp
+Forwarded-to host
+.Pp
+Forwarded-to port
+.Pp
+Bytes received from client
+.Pp
+Bytes sent to client
+.Pp
+Result message
+.Pp
+To activate web server-style "common log format" logging,
+add the following line to the configuration file:
+.Pp
+logcommon
+.Sh COMMAND LINE OPTIONS
+The -c command line option is used to specify an alternate
+configuration file.
+.Pp
+The -h command line option produces a short help message.
+.Pp
+The -v command line option displays the version number.
+.Sh REINITIALIZING RINETD
 The kill -1 signal (SIGHUP) can be used to cause rinetd
 to reload its configuration file without interrupting existing
-connections (this was added in version 0.4).
+connections.
 Under Linux\(tm the process id is saved in the file \fI/var/run/rinetd.pid\fR
-to facilitate the kill -HUP (added in version 0.41).
-.Pp
+to facilitate the kill -HUP. An alternate
+filename can be provided by using the <code>pidlogfile</code>
+configuration file option.
+
+.Sh LIMITATIONS
+rinetd redirects TCP connections only. There is
+no support for UDP. rinetd only redirects protocols which
+use a single TCP socket. This rules out FTP.
 .Sh BUGS
-rinetd does not currently produce any log information. The
-server redirected to is not able to identify the host the
-client really came from. Sockets would theoretically lose
-data when closed with SO_LINGER turned off, but in Linux
-this is not the case (kernel source comments support this
-belief on my part). On non-Linux platforms, alternate code
-which uses a different trick to work around blocking close()
-is provided, but this code is untested. The manpage
-is sketchy.
+The server redirected to is not able to identify the host the
+client really came from. This cannot be corrected; however,
+the log produced by rinetd provides a way to obtain this
+information. Sockets would theoretically lose data when closed 
+with SO_LINGER turned off, but in Linux this is not the case (kernel 
+source comments support this belief on my part). On non-Linux platforms, 
+alternate code which uses a different trick to work around blocking close()
+is provided, but this code is untested. The logging is inadequate.
+The duration of each connection should be logged.
 .Sh LICENSE
 Copyright (c) 1997, 1998, Thomas Boutell and Boutell.Com, Inc.
 This software is released for free use under the terms of
-the GNU Public License, version 2 or higher.
+the GNU Public License, version 2 or higher. NO WARRANTY
+IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK.
 .Sh CONTACT INFORMATION
 See http://www.boutell.com/rinetd/ for the latest release.
 Thomas Boutell can be reached by email: boutell@boutell.com
 .Sh THANKS
-Thanks are due to Bill Davidsen.
-
+Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, the
+Apache Group, and many others who have contributed advice
+and/or source code to this and other free software projects.

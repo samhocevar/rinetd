@@ -26,3 +26,15 @@ them with code that should fail gracefully without
 crashing the program or breaking existing connections
 when another application is hogging memory.
 
+Version 0.5: added logging in both tab-delimited
+and web-server-style formats. No longer exits if
+an individual configuration file line generates
+an error. Added allow and deny rules. Added 
+-c command line option to specify a configuration file.
+
+Version 0.51: fixed failure to check for an open
+log file before writing log entries.
+
+Version 0.52: documentation added regarding the
+ability to bind to all IP addresses, if desired,
+using the special address 0.0.0.0.
