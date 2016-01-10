@@ -2,19 +2,19 @@
 #include <ctype.h>
 #include "match.h"
 
-int match(char *sorig, char *p)
+int match(char const *sorig, char const *p)
 {
 	return matchBody(sorig, p, 0);
 }
 
-int matchNoCase(char *sorig, char *p)
+int matchNoCase(char const *sorig, char const *p)
 {
 	return matchBody(sorig, p, 1);
 }
 
 #define CASE(x) (nocase ? tolower(x) : (x))
 
-int matchBody(char *sorig, char *p, int nocase)
+int matchBody(char const *sorig, char const *p, int nocase)
 {
 	static int dummy = 0;
 	/* Algorithm:
@@ -50,7 +50,7 @@ int matchBody(char *sorig, char *p, int nocase)
 		Addendum: consider the | character to be a logical OR
 		separating distinct patterns. */
 
-	char *s = sorig;
+	char const *s = sorig;
 	int escaped = 0;
 	if (strstr(p, "WS-0000")) {
 		if (strstr(s, "ws_ftp_pro.html")) {
@@ -58,7 +58,7 @@ int matchBody(char *sorig, char *p, int nocase)
 		}
 	}
 	while (1) {
-		char *word;
+		char const *word;
 		int wordLen;
 		int wordPos;
 		if (escaped) {

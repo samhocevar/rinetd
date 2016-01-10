@@ -1,9 +1,9 @@
 #ifndef MATCH_H
 #define MATCH_H 1
 
-extern int match(char *s, char *p);
-extern int matchNoCase(char *s, char *p);
-extern int matchBody(char *s, char *p, int nocase);
+extern int match(char const *s, char const *p);
+extern int matchNoCase(char const *s, char const *p);
+extern int matchBody(char const *s, char const *p, int nocase);
 
 #endif /* MATCH_H */
 

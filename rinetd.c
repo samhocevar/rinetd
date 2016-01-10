@@ -177,7 +177,7 @@ void log(int i, int coSe, int result);
 
 int getAddress(char *host, struct in_addr *iaddr);
 
-char *logMessages[] = {
+char const *logMessages[] = {
 	"done-local-closed",
 	"done-remote-closed",
 	"accept-failed -",
@@ -210,7 +210,7 @@ char *logMessages[] = {
 typedef struct _rinetd_options RinetdOptions;
 struct _rinetd_options
 {
-	char *conf_file;
+	char const *conf_file;
 };
 
 RinetdOptions options = {
@@ -1358,7 +1358,7 @@ int safeRealloc(void **data, int oldsize, int newsize)
 void RegisterPID(void)
 {
 	FILE *pid_file;
-	char *pid_file_name = "/var/run/rinetd.pid";
+	char const *pid_file_name = "/var/run/rinetd.pid";
 	if (pidLogFileName) {
 		pid_file_name = pidLogFileName;
 	}
@@ -1482,13 +1482,12 @@ int readArgs (int argc,
 		}
 		switch (c) {
 			case 'c':
-			options->conf_file = malloc(strlen(optarg) + 1);
+			options->conf_file = strdup(optarg);
 			if (!options->conf_file) {
 				fprintf(stderr, "Not enough memory to "
 					"launch rinetd.\n");
 				exit(1);
 			}
-			strcpy(options->conf_file, optarg);
 			break;
 			case 'h':
 			printf("Usage: rinetd [OPTION]\n"
