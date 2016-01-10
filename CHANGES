@@ -46,3 +46,10 @@ functional consequences were corrected.
 Version 0.61: fixed a bug in 0.6 which completely
 broke rinetd under Linux. Oops.
 
+Version 0.62: fixed a potential buffer overrun;
+prior versions failed to reallocate one of the
+arrays correctly when reallocating memory to
+accommodate more connections.  Thanks to 
+Sam Hocevar.
+
+

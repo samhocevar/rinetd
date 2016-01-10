@@ -1,4 +1,4 @@
-#define VERSION "0.61"
+#define VERSION "0.62"
 
 #ifdef WIN32
 #include <windows.h>
@@ -1071,6 +1071,11 @@ void handleAccept(int i)
 		{
 			goto shortage;
 		}
+		if (!SAFE_REALLOC(&coClosing, sizeof(int) * o, 
+			sizeof(int) * coTotal)) 
+		{
+			goto shortage;
+		}
 		if (!SAFE_REALLOC(&reClosed, sizeof(int) * o, 
 			sizeof(int) * coTotal)) 
 		{
@@ -1140,7 +1145,7 @@ void handleAccept(int i)
 				goto shortage;
 			}
 		}
-		index = coTotal;
+		index = o;
 	}
 	coInputRPos[index] = 0;
 	coInputWPos[index] = 0;
