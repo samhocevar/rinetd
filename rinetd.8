@@ -1,8 +1,8 @@
-.\" Copyright (c) 1997, 1998, Thomas Boutell and Boutell.Com, Inc.
+.\" Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
 .\" This software is released for free use under the terms of
 .\" the GNU Public License, version 2 or higher.
 .\"
-.Dd February 11, 1998
+.Dd February 18, 1999
 .Dt RINETD 8
 .Os LINUX
 .Sh NAME
@@ -12,7 +12,7 @@
 .Sh SYNOPSIS
 .Nm /usr/sbin/rinetd
 .Sh VERSION
-Version 0.52, 9/7/1998.
+Version 0.61, 3/1/1999.
 .Sh DESCRIPTION
 .Nm rinetd
 redirects TCP connections from one IP address and port to another. rinetd
@@ -54,7 +54,7 @@ can be used. For example:
 .Pp
 0.0.0.0 23 10.1.1.2 23
 .Pp
-Would redirect all connections to port 80, for all IP addresses
+Would redirect all connections to port 23, for all IP addresses
 assigned to the server. This is the default behavior for most
 other programs.
 .Pp
@@ -170,14 +170,14 @@ use a single TCP socket. This rules out FTP.
 The server redirected to is not able to identify the host the
 client really came from. This cannot be corrected; however,
 the log produced by rinetd provides a way to obtain this
-information. Sockets would theoretically lose data when closed 
+information. Under Unix, Sockets would theoretically lose data when closed 
 with SO_LINGER turned off, but in Linux this is not the case (kernel 
-source comments support this belief on my part). On non-Linux platforms, 
+source comments support this belief on my part). On non-Linux Unix platforms, 
 alternate code which uses a different trick to work around blocking close()
 is provided, but this code is untested. The logging is inadequate.
 The duration of each connection should be logged.
 .Sh LICENSE
-Copyright (c) 1997, 1998, Thomas Boutell and Boutell.Com, Inc.
+Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
 This software is released for free use under the terms of
 the GNU Public License, version 2 or higher. NO WARRANTY
 IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK.

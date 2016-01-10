@@ -1,19 +1,75 @@
-#include <stdio.h>
-#include <string.h>
+#define VERSION "0.61"
+
+#ifdef WIN32
+#include <windows.h>
+#include <winsock.h>
+#include "getopt.h"
+#else
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netdb.h>
-#include <signal.h>
 #include <netinet/in.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <time.h>
 #include <getopt.h>
+#include <errno.h>
+#define INVALID_SOCKET (-1)
+#include <sys/time.h>
+#endif /* WIN32 */
+
+#include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <time.h>
 #include <ctype.h>
 
-#define VERSION "0.52"
+#ifndef WIN32
+/* Windows sockets compatibility defines */
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+int closesocket(int s);
+
+int closesocket(int s) {
+	return close(s);
+}
+#define ioctlsocket ioctl
+#define MAKEWORD(a, b)
+#define WSAStartup(a, b) (0)
+#define	WSACleanup()
+#ifdef __MAC__
+/* The constants for these are a little screwy in the prelinked
+	MSL GUSI lib and we can't rebuild it, so roll with it */
+#define WSAEWOULDBLOCK EWOULDBLOCK
+#define WSAEAGAIN EAGAIN
+#define WSAEINPROGRESS EINPROGRESS
+#else
+#define WSAEWOULDBLOCK EWOULDBLOCK
+#define WSAEAGAIN EAGAIN
+#define WSAEINPROGRESS EINPROGRESS
+#endif /* __MAC__ */
+#define WSAEINTR EINTR
+#define SOCKET int
+#define GetLastError() (errno)
+typedef struct {
+	int dummy;
+} WSADATA;
+
+void Sleep(long ms);
+
+void Sleep(long ms)
+{
+	struct timeval tv;
+	tv.tv_sec = ms / 1000;
+	tv.tv_usec = ms * 1000;
+	select(0, 0, 0, 0, &tv);
+}
+#else 
+/* WIN32 doesn't really have WSAEAGAIN */
+#ifndef WSAEAGAIN
+#define WSAEAGAIN WSAEWOULDBLOCK
+#endif
+#endif /* WIN32 */
 
 #ifndef TRUE
 #define TRUE 1
@@ -29,7 +85,15 @@
 #define PERROR(x) 
 #endif /* DEBUG */
 
-int *seFds = 0;
+/* We've got to get FIONBIO from somewhere. Try the Solaris location
+        if it isn't defined yet by the above includes. */
+#ifndef FIONBIO
+#include <sys/filio.h>
+#endif /* FIONBIO */
+
+#include "match.h"
+
+SOCKET *seFds = 0;
 /* In network order, for network purposes */
 struct in_addr *seLocalAddrs = 0;
 unsigned short *seLocalPorts = 0;
@@ -49,8 +113,8 @@ int *seDenyRules = 0;
 int *seDenyRulesTotal = 0;
 int globalDenyRules = 0;
 
-int *reFds = 0;
-int *loFds = 0;
+SOCKET *reFds = 0;
+SOCKET *loFds = 0;
 unsigned char *reAddresses = 0;
 int *coInputRPos = 0;
 int *coInputWPos = 0;
@@ -111,6 +175,8 @@ void selectLoop(void);
 
 void log(int i, int coSe, int result);
 
+int getAddress(char *host, struct in_addr *iaddr);
+
 char *logMessages[] = {
 	"done-local-closed",
 	"done-remote-closed",
@@ -151,24 +217,37 @@ RinetdOptions options = {
 	"/etc/rinetd.conf"
 };
 
-int readAargs (int argc,
+int readArgs (int argc,
 	char **argv,
 	RinetdOptions *options);
 
 int main(int argc, char *argv[])
 {
+	WSADATA wsaData;
+	int result = WSAStartup(MAKEWORD(1, 1), &wsaData);
+	if (result != 0) {
+		fprintf(stderr, "Your computer was not connected "
+			"to the Internet at the time that "
+			"this program was launched, or you "
+			"do not have a 32-bit "
+			"connection to the Internet.");
+		exit(1);
+	}
 	readArgs(argc, argv, &options);
+#ifndef WIN32
 #ifndef DEBUG
 	if (!fork()) {
 		if (!fork()) {
 #endif /* DEBUG */
 			signal(SIGPIPE, plumber);
 			signal(SIGHUP, hup);
+#endif /* WIN32 */
 			signal(SIGTERM, term);
 			initArrays();
 			readConfiguration();
 			RegisterPID();
 			selectLoop();
+#ifndef WIN32
 #ifndef DEBUG
 		} else {
 			exit(0);
@@ -177,6 +256,7 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 #endif /* DEBUG */
+#endif /* WIN32 */
 	return 0;
 }
 
@@ -196,7 +276,7 @@ void readConfiguration(void)
 		/* Close existing server sockets. */
 		for (i = 0; (i < seTotal); i++) {
 			if (seFds[i] != -1) {
-				close(seFds[i]);
+				closesocket(seFds[i]);
 				free(seFromHosts[i]);
 				free(seToHosts[i]);
 			}
@@ -272,7 +352,7 @@ void readConfiguration(void)
 		}
 	}	
 	fclose(in);
-	seFds = (int *) malloc(sizeof(int) * seTotal);	
+	seFds = (SOCKET *) malloc(sizeof(int) * seTotal);	
 	if (!seFds) {
 		goto lowMemory;
 	}
@@ -498,49 +578,51 @@ void readConfiguration(void)
 			}	
 			/* Make a server socket */
 			seFds[i] = socket(PF_INET, SOCK_STREAM, 0);
-			if (seFds[i] < 0) {
+			if (seFds[i] == INVALID_SOCKET) {
 				fprintf(stderr, "rinetd: couldn't create "
 					"server socket!\n");
 				seFds[i] = -1;
 				continue;
 			}
+#ifndef WIN32
 			if (seFds[i] > maxfd) {
 				maxfd = seFds[i];
 			}
+#endif
 			saddr.sin_family = AF_INET;
 			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
 			saddr.sin_port = htons(bindPort);
 			j = 1;
 			setsockopt(seFds[i], SOL_SOCKET, SO_REUSEADDR,
-				&j, sizeof(j));
+				(const char *) &j, sizeof(j));
 			if (bind(seFds[i], (struct sockaddr *) 
-				&saddr, sizeof(saddr)) < 0) 
+				&saddr, sizeof(saddr)) == SOCKET_ERROR) 
 			{
 				/* Warn -- don't exit. */
 				fprintf(stderr, "rinetd: couldn't bind to "
 					"address %s port %d\n", 
 					bindAddress, bindPort);	
-				close(seFds[i]);
-				seFds[i] = -1;
+				closesocket(seFds[i]);
+				seFds[i] = INVALID_SOCKET;
 				continue;
 			}
-			if (listen(seFds[i], 5) < 0) {
+			if (listen(seFds[i], 5) == SOCKET_ERROR) {
 				/* Warn -- don't exit. */
 				fprintf(stderr, "rinetd: couldn't listen to "
 					"address %s port %d\n",
 					bindAddress, bindPort);	
-				close(seFds[i]);
-				seFds[i] = -1;
+				closesocket(seFds[i]);
+				seFds[i] = INVALID_SOCKET;
 				continue;
 			}
-			fcntl(seFds[i], F_SETFL, O_NONBLOCK);
+			ioctlsocket(seFds[i], FIONBIO, &j);
 			if (!getAddress(connectAddress, &iaddr)) {
 				/* Warn -- don't exit. */
 				fprintf(stderr, "rinetd: host %s could not be "
 					"resolved on line %d.\n", 
 					bindAddress, lnum);
-				close(seFds[i]);
-				seFds[i] = -1;
+				closesocket(seFds[i]);
+				seFds[i] = INVALID_SOCKET;
 				continue;
 			}	
 			seLocalAddrs[i] = iaddr;
@@ -610,8 +692,8 @@ void initArrays(void)
 {
 	int j;
 	coTotal = 64;
-	reFds = (int *) malloc(sizeof(int) * coTotal);
-	loFds = (int *) malloc(sizeof(int) * coTotal);
+	reFds = (SOCKET *) malloc(sizeof(int) * coTotal);
+	loFds = (SOCKET *) malloc(sizeof(int) * coTotal);
 	coInputRPos = (int *) malloc(sizeof(int) * coTotal);
 	coInputWPos = (int *) malloc(sizeof(int) * coTotal);
 	coOutputRPos = (int *) malloc(sizeof(int) * coTotal);
@@ -675,7 +757,7 @@ void selectPass(void) {
 	FD_ZERO(&writefds);
 	/* Server sockets */
 	for (i = 0; (i < seTotal); i++) {
-		if (seFds[i] != -1) {
+		if (seFds[i] != INVALID_SOCKET) {
 			FD_SET(seFds[i], &readfds);
 		}
 	}
@@ -763,10 +845,10 @@ void handleRemoteRead(int i)
 		return;
 	}
 	if (got < 0) {
-		if (errno == EWOULDBLOCK) {
+		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
 		}
-		if (errno == EINPROGRESS) {
+		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
 		handleCloseFromRemote(i);
@@ -784,16 +866,16 @@ void handleRemoteWrite(int i)
 		coClosed[i] = 1;
 		PERROR("rinetd: local closed and no more output");
 		log(i, coSe[i], logDone | coLog[i]); 
-		close(reFds[i]);
+		closesocket(reFds[i]);
 		return;
 	}
 	got = send(reFds[i], coOutput[i] + coOutputWPos[i],
 		coOutputRPos[i] - coOutputWPos[i], 0);
 	if (got < 0) {
-		if (errno == EWOULDBLOCK) {
+		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
 		}
-		if (errno == EINPROGRESS) {
+		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
 		handleCloseFromRemote(i);
@@ -820,10 +902,10 @@ void handleLocalRead(int i)
 		return;
 	}
 	if (got < 0) {
-		if (errno == EWOULDBLOCK) {
+		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
 		}
-		if (errno == EINPROGRESS) {
+		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
 		handleCloseFromLocal(i);
@@ -840,16 +922,16 @@ void handleLocalWrite(int i)
 		coClosed[i] = 1;
 		PERROR("remote closed and no more input");
 		log(i, coSe[i], logDone | coLog[i]);
-		close(loFds[i]);
+		closesocket(loFds[i]);
 		return;
 	}
 	got = send(loFds[i], coInput[i] + coInputWPos[i],
 		coInputRPos[i] - coInputWPos[i], 0);
 	if (got < 0) {
-		if (errno == EWOULDBLOCK) {
+		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
 		}
-		if (errno == EINPROGRESS) {
+		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
 		handleCloseFromLocal(i);
@@ -869,10 +951,11 @@ void handleCloseFromLocal(int i)
 	/* The local end fizzled out, so make sure
 		we're all done with that */
 	PERROR("close from local");
-	close(loFds[i]);
+	closesocket(loFds[i]);
 	loClosed[i] = 1;
 	if (!reClosed[i]) {
 #ifndef LINUX 
+#ifndef WIN32
 		/* Now set up the remote end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
@@ -881,6 +964,7 @@ void handleCloseFromLocal(int i)
 		arg = 1024;
 		setsockopt(reFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
+#endif /* WIN32 */
 #endif /* LINUX */
 		coLog[i] = logLocalClosedFirst;
 	} 
@@ -893,10 +977,11 @@ void handleCloseFromRemote(int i)
 	/* The remote end fizzled out, so make sure
 		we're all done with that */
 	PERROR("close from remote");
-	close(reFds[i]);
+	closesocket(reFds[i]);
 	reClosed[i] = 1;
 	if (!loClosed[i]) {
 #ifndef LINUX
+#ifndef WIN32
 		/* Now set up the local end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
@@ -905,6 +990,7 @@ void handleCloseFromRemote(int i)
 		arg = 1024;
 		setsockopt(loFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
+#endif /* WIN32 */
 #endif /* LINUX */
 		loClosed[i] = 0;
 		coLog[i] = logRemoteClosedFirst;
@@ -923,20 +1009,24 @@ void handleAccept(int i)
 	int addrlen;
 	int index = -1;
 	int o;
-	int nfd;
+	SOCKET nfd;
 	addrlen = sizeof(addr);
 	nfd = accept(seFds[i], &addr, &addrlen);
-	if (nfd < 0) {
+	if (nfd == INVALID_SOCKET) {
 		log(-1, i, logAcceptFailed);
 		return;
 	}
+#ifndef WIN32
 	if (nfd > maxfd) {
 		maxfd = nfd;
 	}
+#endif /* WIN32 */
 	j = 1;
-	fcntl(nfd, F_SETFL, O_NONBLOCK);
+	ioctlsocket(nfd, FIONBIO, &j);
 	j = 0;
+#ifndef WIN32
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &j, sizeof(j));
+#endif
 	for (j = 0; (j < coTotal); j++) {	
 		if (coClosed[j]) {
 			index = j;
@@ -947,12 +1037,12 @@ void handleAccept(int i)
 		o = coTotal;
 		coTotal *= 2;
 		if (!SAFE_REALLOC(&reFds, sizeof(int) * o,
-			sizeof(int) * coTotal)) 
+			sizeof(SOCKET) * coTotal)) 
 		{
 			goto shortage;
 		}
 		if (!SAFE_REALLOC(&loFds, sizeof(int) * o,
-			sizeof(int) * coTotal)) 
+			sizeof(SOCKET) * coTotal)) 
 		{
 			goto shortage;
 		}
@@ -1142,24 +1232,26 @@ void openLocalFd(int se, int i)
 	int j;
 	struct sockaddr_in saddr;
 	loFds[i] = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (loFds[i] < 0) {
-		close(reFds[i]);
+	if (loFds[i] == INVALID_SOCKET) {
+		closesocket(reFds[i]);
 		reClosed[i] = 1;
 		loClosed[i] = 1;
 		coClosed[i] = 1;	
 		log(i, coSe[i], logLocalSocketFailed);
 		return;
 	}
+#ifndef WIN32
 	if (loFds[i] > maxfd) {
 		maxfd = loFds[i];
 	}
+#endif /* WIN32 */
 	/* Bind the local socket */
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = INADDR_ANY;
 	saddr.sin_addr.s_addr = 0;
-	if (bind(loFds[i], (struct sockaddr *) &saddr, sizeof(saddr)) < 0) {
-		close(loFds[i]);
-		close(reFds[i]);
+	if (bind(loFds[i], (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
+		closesocket(loFds[i]);
+		closesocket(reFds[i]);
 		reClosed[i] = 1;
 		loClosed[i] = 1;
 		coClosed[i] = 1;	
@@ -1170,6 +1262,7 @@ void openLocalFd(int se, int i)
 	saddr.sin_family = AF_INET;
 	memcpy(&saddr.sin_addr, &seLocalAddrs[se], sizeof(struct in_addr));
 	saddr.sin_port = seLocalPorts[se];
+#ifndef WIN32
 #ifdef LINUX
 	j = 0;
 	setsockopt(loFds[i], SOL_SOCKET, SO_LINGER, &j, sizeof(j));
@@ -1177,15 +1270,18 @@ void openLocalFd(int se, int i)
 	j = 1024;
 	setsockopt(loFds[i], SOL_SOCKET, SO_SNDBUF, &j, sizeof(j));
 #endif /* LINUX */
+#endif /* WIN32 */
 	j = 1;
-	fcntl(loFds[i], F_SETFL, O_NONBLOCK);
+	ioctlsocket(loFds[i], FIONBIO, &j);
 	if (connect(loFds[i], (struct sockaddr *)&saddr, 
-		sizeof(struct sockaddr_in)) < 0) 
+		sizeof(struct sockaddr_in)) == INVALID_SOCKET) 
 	{
-		if (errno != EINPROGRESS) {
+		if ((GetLastError() != WSAEINPROGRESS) &&
+			(GetLastError() != WSAEWOULDBLOCK))
+		{
 			PERROR("rinetd: connect");
-			close(loFds[i]);
-			close(reFds[i]);
+			closesocket(loFds[i]);
+			closesocket(reFds[i]);
 			reClosed[i] = 1;
 			loClosed[i] = 1;
 			coClosed[i] = 1;	
@@ -1223,6 +1319,7 @@ int getAddress(char *host, struct in_addr *iaddr)
 	}
 }
 
+#ifndef WIN32
 void plumber(int s)
 {
 	/* Just reinstall */
@@ -1236,6 +1333,7 @@ void hup(int s)
 	/* And reinstall the signal handler */
 	signal(SIGHUP, hup);
 }
+#endif /* WIN32 */
 
 int safeRealloc(void **data, int oldsize, int newsize)
 {
@@ -1406,6 +1504,7 @@ int readArgs (int argc,
 			exit (1);
 		}
 	}
+	return 0;
 }
 
 /* get_gmtoff was borrowed from Apache. Thanks folks. */
@@ -1443,7 +1542,7 @@ int patternBad(char *pattern)
 
 void refuse(int index, int logCode)
 {
-	close(reFds[index]);
+	closesocket(reFds[index]);
 	reClosed[index] = 1;
 	loClosed[index] = 1;
 	coClosed[index] = 1;	

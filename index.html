@@ -4,9 +4,9 @@
 </head>
 <body bgcolor="#FFFFF0">
 <!--
- Copyright (c) 1997, 1998, Thomas Boutell and Boutell.Com, Inc.
+ Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
  This software is released for free use under the terms of
- the GNU Public License, version 2 or higher.
+ the GNU General Public License, version 2 or higher.
 -->
 <table>
 <tr>
@@ -26,13 +26,19 @@ rinetd -- internet ``redirection server''
 <p>
 <font color="#FF8888" size="4">VERSION</font>
 <p>
-Version 0.52, 8/7/1998.
+Version 0.61, 3/1/1999.
 <p>
 <font color="#FF8888" size="4">WHERE TO GET</font>
 <p>
+<strong>For Linux:</strong>
 <a href="ftp://ftp.boutell.com/pub/boutell/rinetd/rinetd.tar.gz">By
 anonymous FTP from ftp.boutell.com</a> in the subdirectory
 <code>boutell/rinetd</code> as the file <code>rinetd.tar.gz</code>.
+<p>
+<strong>For Windows 95/98/NT:</strong>
+<a href="ftp://ftp.boutell.com/pub/boutell/rinetd/rinetd.zip">By
+anonymous FTP from ftp.boutell.com</a> in the subdirectory
+<code>boutell/rinetd</code> as the file <code>rinetd.zip</code>.
 <p>
 <font color="#FF8888" size="4">DESCRIPTION</font>
 <p>
@@ -78,7 +84,7 @@ can be used. For example:
 <pre>
 0.0.0.0 23 10.1.1.2 23
 </pre>
-Would redirect all connections to port 80, for all IP addresses
+Would redirect all connections to port 23, for all IP addresses
 assigned to the server. This is the default behavior for most
 other programs.
 <p>
@@ -200,9 +206,9 @@ configuration file option.
 The server redirected to is not able to identify the host the
 client really came from. This cannot be corrected; however,
 the log produced by rinetd provides a way to obtain this
-information. Sockets would theoretically lose data when closed
+information. Under Unix, sockets would theoretically lose data when closed
 with <code>SO_LINGER</code> turned off, but in Linux this is not the case 
-(kernel source comments support this belief on my part). On non-Linux 
+(kernel source comments support this belief on my part). On non-Linux Unix
 platforms, alternate code which uses a different trick to work around 
 blocking <code>close()</code> is provided, but this code is untested.
 <p>
@@ -210,11 +216,11 @@ The logging is inadequate. The duration of the connection should be logged.
 <p>
 <font color="#FF8888" size="4">LICENSE</font>
 <p>
-Copyright (c) 1997, 1998, 
+Copyright (c) 1997, 1998, 1999,
 <a href="http://www.boutell.com/boutell">Thomas Boutell</a> and 
 <a href="http://www.boutell.com/">Boutell.Com, Inc.</a>
 This software is released for free use under the terms of
-the GNU Public License, version 2 or higher.
+the GNU General Public License, version 2 or higher.
 <p>
 <font color="#FF8888" size="4">CONTACT INFORMATION</font>
 <p>
@@ -225,8 +231,9 @@ Thomas Boutell can be reached by email:
 <p>
 <font color="#FF8888" size="4">THANKS</font>
 <p>
-Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, the
-Apache Group, and many others who have contributed advice
-and/or source code to this and other open software projects.
+Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, 
+Joel S. Noble, the Apache Group, and many others who have contributed 
+advice, encouragement and/or source code to this and other open 
+software projects.
 </body>
 </html>

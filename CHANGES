@@ -38,3 +38,11 @@ log file before writing log entries.
 Version 0.52: documentation added regarding the
 ability to bind to all IP addresses, if desired,
 using the special address 0.0.0.0.
+
+Version 0.6: ported to Win32. Various compatibility
+fixes were made and some minor oversights without
+functional consequences were corrected.
+
+Version 0.61: fixed a bug in 0.6 which completely
+broke rinetd under Linux. Oops.
+

@@ -12,8 +12,11 @@ int matchNoCase(char *sorig, char *p)
 	return matchBody(sorig, p, 1);
 }
 
+#define CASE(x) (nocase ? tolower(x) : (x))
+
 int matchBody(char *sorig, char *p, int nocase)
 {
+	static int dummy = 0;
 	/* Algorithm:
 
 		Word separator: *. End-of-string
@@ -28,7 +31,7 @@ int matchBody(char *sorig, char *p, int nocase)
 		and s contain end-of-string at that
 		point, return success.
 	
-		\ escapes the next character, including \ itself.
+		\ escapes the next character, including \ itself (6.0).
 	
 		For each *:
 
@@ -49,7 +52,11 @@ int matchBody(char *sorig, char *p, int nocase)
 
 	char *s = sorig;
 	int escaped = 0;
-
+	if (strstr(p, "WS-0000")) {
+		if (strstr(s, "ws_ftp_pro.html")) {
+			dummy = 1;
+		}
+	}
 	while (1) {
 		char *word;
 		int wordLen;
@@ -61,14 +68,8 @@ int matchBody(char *sorig, char *p, int nocase)
 			if ((*s == '\0') && (*p == '\0')) {
 				return 1;
 			}
-			if (nocase) {
-				if (tolower(*p) != tolower(*s)) {
-					goto nextPattern;
-				}
-			} else {
-				if (*p != *s) {
-					goto nextPattern;
-				}
+			if (CASE(*p) != CASE(*s)) {
+				goto nextPattern;
 			}
 			p++;		
 			s++;
@@ -111,7 +112,7 @@ int matchBody(char *sorig, char *p, int nocase)
 					}
 					break;
 				}
-				if ((((*s) == word[wordPos]) ||
+				if ((((CASE(*s)) == CASE(word[wordPos])) ||
 					((*s == '\0') && 
 						(word[wordPos] == '|'))) ||
 					(((*s != '\0') && (*s != '|')) && 
@@ -138,15 +139,9 @@ int matchBody(char *sorig, char *p, int nocase)
 				(*p == '|'))) {
 				return 1;
 			}
-			if (nocase) {
-				if (tolower(*p) != tolower(*s)) {
-					goto nextPattern;
-				}
-			} else {
-				if (*p != *s) {
-					goto nextPattern;
-				}
-			}
+			if (CASE(*p) != CASE(*s)) {
+				goto nextPattern;
+			} 
 			p++;		
 			s++;
 			break;
