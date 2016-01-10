@@ -10,6 +10,8 @@
 #include <windows.h>
 #include <winsock.h>
 #include "getopt.h"
+#define syslog fprintf
+#define LOG_ERR stderr
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -18,6 +20,7 @@
 #include <netinet/in.h>
 #include <getopt.h>
 #include <errno.h>
+#include <syslog.h>
 #define INVALID_SOCKET (-1)
 #include <sys/time.h>
 #endif /* WIN32 */
@@ -231,8 +234,14 @@ int readArgs (int argc,
 
 int main(int argc, char *argv[])
 {
+#ifdef WIN32
 	WSADATA wsaData;
-	int result = WSAStartup(MAKEWORD(1, 1), &wsaData);
+#endif
+	int result;
+#ifndef WIN32
+	openlog("rinetd", LOG_PID, LOG_DAEMON);
+#endif
+	result = WSAStartup(MAKEWORD(1, 1), &wsaData);
 	if (result != 0) {
 		fprintf(stderr, "Your computer was not connected "
 			"to the Internet at the time that "
@@ -264,6 +273,7 @@ int main(int argc, char *argv[])
 			initArrays();
 			readConfiguration();
 			RegisterPID();
+			syslog(LOG_INFO, "Starting redirections...");
 			selectLoop();
 #ifndef WIN32
 #ifndef DEBUG
@@ -463,19 +473,19 @@ void readConfiguration(void)
 		}
 		bindAddress = strtok(line, " \t\r\n");
 		if (!bindAddress) {
-			fprintf(stderr, "rinetd: no bind address specified "
-				"on line %d.\n", lnum);	
+			syslog(LOG_ERR, "no bind address specified "
+				"on file %s, line %d.\n", options.conf_file, lnum);
 			continue;
 		}	
 		if (!strcmp(bindAddress, "allow")) {
 			char *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
-				fprintf(stderr, "rinetd: nothing to allow "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "nothing to allow "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
 			if (patternBad(pattern)) {
-				fprintf(stderr, "rinetd: illegal allow or "
+				syslog(LOG_ERR, "illegal allow or "
 					"deny pattern. Only digits, ., and\n"
 					"the ? and * wild cards are allowed. "
 					"For performance reasons, rinetd\n"
@@ -501,8 +511,8 @@ void readConfiguration(void)
 		} else if (!strcmp(bindAddress, "deny")) {
 			char *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
-				fprintf(stderr, "rinetd: nothing to deny "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "nothing to deny "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
 			denyRules[di] = malloc(strlen(pattern) + 1);
@@ -522,8 +532,8 @@ void readConfiguration(void)
 		} else if (!strcmp(bindAddress, "logfile")) {
 			char *nt = strtok(0, " \t\r\n");
 			if (!nt) {
-				fprintf(stderr, "rinetd: no log file name "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "no log file name "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
 			logFileName = malloc(strlen(nt) + 1);
@@ -534,8 +544,8 @@ void readConfiguration(void)
 		} else if (!strcmp(bindAddress, "pidlogfile")) {
 			char *nt = strtok(0, " \t\r\n");
 			if (!nt) {
-				fprintf(stderr, "rinetd: no PID log file name "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "no PID log file name "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
 			pidLogFileName = malloc(strlen(nt) + 1);
@@ -549,8 +559,8 @@ void readConfiguration(void)
 			/* A regular forwarding rule. */
 			bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
-				fprintf(stderr, "rinetd: no bind port "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "no bind port "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
 			service = getservbyname(bindPortS, "tcp");	
@@ -560,20 +570,20 @@ void readConfiguration(void)
 				bindPort = atoi(bindPortS);
 			}
 			if ((bindPort == 0) || (bindPort >= 65536)) {
-				fprintf(stderr, "rinetd: bind port missing "
-					"or out of range on line %d.\n", lnum);
+				syslog(LOG_ERR, "bind port missing "
+					"or out of range on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
 			connectAddress = strtok(0, " \t\r\n");
 			if (!connectAddress) {
-				fprintf(stderr, "rinetd: no connect address "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "no connect address "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
 			connectPortS = strtok(0, " \t\r\n");
 			if (!connectPortS) {
-				fprintf(stderr, "rinetd: no connect port "
-					"specified on line %d.\n", lnum);	
+				syslog(LOG_ERR, "no connect port "
+					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
 			service = getservbyname(connectPortS, "tcp");	
@@ -583,8 +593,8 @@ void readConfiguration(void)
 				connectPort = atoi(connectPortS);
 			}
 			if ((connectPort == 0) || (connectPort >= 65536)) {
-				fprintf(stderr, "rinetd: bind port missing "
-					"or out of range on line %d.\n", lnum);
+				syslog(LOG_ERR, "bind port missing "
+					"or out of range on file %s,  %d.\n", options.conf_file, lnum);
 				continue;
 			}
 			/* Turn all of this stuff into reasonable addresses */
@@ -597,8 +607,8 @@ void readConfiguration(void)
 			/* Make a server socket */
 			seFds[i] = socket(PF_INET, SOCK_STREAM, 0);
 			if (seFds[i] == INVALID_SOCKET) {
-				fprintf(stderr, "rinetd: couldn't create "
-					"server socket!\n");
+				syslog(LOG_ERR, "couldn't create "
+					"server socket! (%m)\n");
 				seFds[i] = -1;
 				continue;
 			}
@@ -617,8 +627,8 @@ void readConfiguration(void)
 				&saddr, sizeof(saddr)) == SOCKET_ERROR) 
 			{
 				/* Warn -- don't exit. */
-				fprintf(stderr, "rinetd: couldn't bind to "
-					"address %s port %d\n", 
+				syslog(LOG_ERR, "couldn't bind to "
+					"address %s port %d (%m)\n",
 					bindAddress, bindPort);	
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
@@ -626,8 +636,8 @@ void readConfiguration(void)
 			}
 			if (listen(seFds[i], 5) == SOCKET_ERROR) {
 				/* Warn -- don't exit. */
-				fprintf(stderr, "rinetd: couldn't listen to "
-					"address %s port %d\n",
+				syslog(LOG_ERR, "couldn't listen to "
+					"address %s port %d (%m)\n",
 					bindAddress, bindPort);	
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
@@ -636,9 +646,9 @@ void readConfiguration(void)
 			ioctlsocket(seFds[i], FIONBIO, &j);
 			if (!getAddress(connectAddress, &iaddr)) {
 				/* Warn -- don't exit. */
-				fprintf(stderr, "rinetd: host %s could not be "
-					"resolved on line %d.\n", 
-					bindAddress, lnum);
+				syslog(LOG_ERR, "host %s could not be "
+					"resolved on file %s, line %d.\n",
+					bindAddress, options.conf_file, lnum);
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
 				continue;
@@ -671,14 +681,16 @@ void readConfiguration(void)
 	}
 	if (logFileName) {
 		logFile = fopen(logFileName, "a");
-		if (!logFile) {
-			fprintf(stderr, "rinetd: could not open %s to append.\n",
+		if (logFile) {
+			setvbuf(logFile, NULL, _IONBF, 0);
+		} else {
+			syslog(LOG_ERR, "could not open %s to append (%m).\n",
 				logFileName);
 		}
 	}
 	return;
 lowMemory:
-	fprintf(stderr, "rinetd: not enough memory to start rinetd.\n");
+	syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 	exit(1);
 }
 
@@ -735,7 +747,7 @@ void initArrays(void)
 		(!coBytesInput) || (!coBytesOutput) || 
 		(!coLog) || (!coSe) || (!reAddresses)) 
 	{
-		fprintf(stderr, "rinetd: not enough memory to start rinetd.\n");
+		syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 		exit(1);
 	}	
 	for (j = 0; (j < coTotal); j++) {
@@ -743,8 +755,7 @@ void initArrays(void)
 		coInput[j] = (char *) malloc(sizeof(char) * bufferSpace);
 		coOutput[j] = (char *) malloc(sizeof(char) * bufferSpace);
 		if ((!coInput[j]) || (!coOutput[j])) {
-			fprintf(stderr, "rinetd: not enough memory to start "
-				"rinetd.\n");
+			syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 			exit(1);
 		}
 	}
@@ -1031,6 +1042,7 @@ void handleAccept(int i)
 	addrlen = sizeof(addr);
 	nfd = accept(seFds[i], &addr, &addrlen);
 	if (nfd == INVALID_SOCKET) {
+		syslog(LOG_ERR, "accept(%d): %m", seFds[i]);
 		log(-1, i, logAcceptFailed);
 		return;
 	}
@@ -1244,8 +1256,8 @@ void handleAccept(int i)
 	openLocalFd(i, index);	
 	return;
 shortage:
-	fprintf(stderr, "rinetd: not enough memory to "
-		"add slots. Currently %d slots.\n", o);
+	syslog(LOG_ERR, "not enough memory to add slots. "
+		"Currently %d slots.\n", o);
 	/* Go back to the previous total number of slots */
 	coTotal = o;	
 }
@@ -1256,6 +1268,7 @@ void openLocalFd(int se, int i)
 	struct sockaddr_in saddr;
 	loFds[i] = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (loFds[i] == INVALID_SOCKET) {
+		syslog(LOG_ERR, "socket(): %m");
 		closesocket(reFds[i]);
 		reClosed[i] = 1;
 		loClosed[i] = 1;
@@ -1353,6 +1366,7 @@ RETSIGTYPE plumber(int s)
 
 RETSIGTYPE hup(int s)
 {
+	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
 	/* Learn the new rules */
 	readConfiguration();
 #ifndef HAVE_SIGACTION
@@ -1507,7 +1521,7 @@ int readArgs (int argc,
 			case 'c':
 			options->conf_file = strdup(optarg);
 			if (!options->conf_file) {
-				fprintf(stderr, "Not enough memory to "
+				syslog(LOG_ERR, "Not enough memory to "
 					"launch rinetd.\n");
 				exit(1);
 			}
