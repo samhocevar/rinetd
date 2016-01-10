@@ -181,7 +181,7 @@ void RegisterPID(void);
 
 void selectLoop(void);
 
-void log(int i, int coSe, int result);
+void logEvent(int i, int coSe, int result);
 
 int getAddress(char *host, struct in_addr *iaddr);
 
@@ -888,7 +888,7 @@ void handleRemoteWrite(int i)
 		reClosed[i] = 1;
 		coClosed[i] = 1;
 		PERROR("rinetd: local closed and no more output");
-		log(i, coSe[i], logDone | coLog[i]);
+		logEvent(i, coSe[i], logDone | coLog[i]);
 		closesocket(reFds[i]);
 		return;
 	}
@@ -944,7 +944,7 @@ void handleLocalWrite(int i)
 		loClosed[i] = 1;
 		coClosed[i] = 1;
 		PERROR("remote closed and no more input");
-		log(i, coSe[i], logDone | coLog[i]);
+		logEvent(i, coSe[i], logDone | coLog[i]);
 		closesocket(loFds[i]);
 		return;
 	}
@@ -1035,7 +1035,7 @@ void handleAccept(int i)
 	nfd = accept(seFds[i], &addr, &addrlen);
 	if (nfd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "accept(%d): %m", seFds[i]);
-		log(-1, i, logAcceptFailed);
+		logEvent(-1, i, logAcceptFailed);
 		return;
 	}
 #ifndef WIN32
@@ -1261,7 +1261,7 @@ void openLocalFd(int se, int i)
 		reClosed[i] = 1;
 		loClosed[i] = 1;
 		coClosed[i] = 1;
-		log(i, coSe[i], logLocalSocketFailed);
+		logEvent(i, coSe[i], logLocalSocketFailed);
 		return;
 	}
 #ifndef WIN32
@@ -1281,7 +1281,7 @@ void openLocalFd(int se, int i)
 		reClosed[i] = 1;
 		loClosed[i] = 1;
 		coClosed[i] = 1;
-		log(i, coSe[i], logLocalBindFailed);
+		logEvent(i, coSe[i], logLocalBindFailed);
 		return;
 	}
 #endif
@@ -1313,7 +1313,7 @@ void openLocalFd(int se, int i)
 			reClosed[i] = 1;
 			loClosed[i] = 1;
 			coClosed[i] = 1;
-			log(i, coSe[i], logLocalConnectFailed);
+			logEvent(i, coSe[i], logLocalConnectFailed);
 			return;
 		}
 	}
@@ -1432,7 +1432,7 @@ struct in_addr nullAddress = { 0 };
 
 struct tm *get_gmtoff(int *tz);
 
-void log(int i, int coSe, int result)
+void logEvent(int i, int coSe, int result)
 {
 	struct in_addr *reAddress;
 	char const *addressText;
@@ -1444,9 +1444,6 @@ void log(int i, int coSe, int result)
 	struct tm *t;
 	char tstr[1024];
 	char sign;
-	if (!log) {
-		return;
-	}
 	t = get_gmtoff(&timz);
 	sign = (timz < 0 ? '-' : '+');
 	if (timz < 0) {
@@ -1607,7 +1604,7 @@ void refuse(int index, int logCode)
 	reClosed[index] = 1;
 	loClosed[index] = 1;
 	coClosed[index] = 1;
-	log(index, coSe[index], logCode);
+	logEvent(index, coSe[index], logCode);
 }
 
 RETSIGTYPE term(int s)
