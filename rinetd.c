@@ -674,6 +674,7 @@ void readConfiguration(void)
 			}
 		}
 	}
+	fclose(in);
 	/* Open the log file */
 	if (logFile) {
 		fclose(logFile);
