@@ -2,6 +2,10 @@
 #include <config.h>
 #endif
 
+#ifndef RETSIGTYPE
+#define RETSIGTYPE void
+#endif
+
 #ifdef WIN32
 #include <windows.h>
 #include <winsock.h>
@@ -166,9 +170,9 @@ int safeRealloc(void **data, int oldsize, int newsize);
 void readConfiguration();
 
 /* Signal handlers */
-void plumber(int s);
-void hup(int s);
-void term(int s);
+RETSIGTYPE plumber(int s);
+RETSIGTYPE hup(int s);
+RETSIGTYPE term(int s);
 
 void initArrays(void);
 void RegisterPID(void);
@@ -243,8 +247,18 @@ int main(int argc, char *argv[])
 	if (options.foreground || !fork()) {
 		if (options.foreground || !fork()) {
 #endif /* DEBUG */
+#ifdef HAVE_SIGACTION
+			struct sigaction act;
+			act.sa_handler=SIG_IGN;
+			sigemptyset (&act.sa_mask);
+			act.sa_flags=SA_RESTART;
+			sigaction(SIGPIPE, &act, NULL);
+			act.sa_handler=&hup;
+			sigaction(SIGHUP, &act, NULL);
+#else
 			signal(SIGPIPE, plumber);
 			signal(SIGHUP, hup);
+#endif
 #endif /* WIN32 */
 			signal(SIGTERM, term);
 			initArrays();
@@ -1329,18 +1343,22 @@ int getAddress(char *host, struct in_addr *iaddr)
 }
 
 #ifndef WIN32
-void plumber(int s)
+#ifndef HAVE_SIGACTION
+RETSIGTYPE plumber(int s)
 {
 	/* Just reinstall */
 	signal(SIGPIPE, plumber);
 }
+#endif
 
-void hup(int s)
+RETSIGTYPE hup(int s)
 {
 	/* Learn the new rules */
 	readConfiguration();
+#ifndef HAVE_SIGACTION
 	/* And reinstall the signal handler */
 	signal(SIGHUP, hup);
+#endif
 }
 #endif /* WIN32 */
 
@@ -1563,7 +1581,7 @@ void refuse(int index, int logCode)
 	log(index, coSe[index], logCode);
 }
 
-void term(int s)
+RETSIGTYPE term(int s)
 {
 	/* Obey the request, but first flush the log */
 	if (logFile) {
