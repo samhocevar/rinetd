@@ -211,10 +211,12 @@ typedef struct _rinetd_options RinetdOptions;
 struct _rinetd_options
 {
 	char const *conf_file;
+	int foreground;
 };
 
 RinetdOptions options = {
-	"/etc/rinetd.conf"
+	"/etc/rinetd.conf",
+	0,
 };
 
 int readArgs (int argc,
@@ -236,8 +238,8 @@ int main(int argc, char *argv[])
 	readArgs(argc, argv, &options);
 #ifndef WIN32
 #ifndef DEBUG
-	if (!fork()) {
-		if (!fork()) {
+	if (options.foreground || !fork()) {
+		if (options.foreground || !fork()) {
 #endif /* DEBUG */
 			signal(SIGPIPE, plumber);
 			signal(SIGHUP, hup);
@@ -1471,11 +1473,12 @@ int readArgs (int argc,
 		int option_index = 0;
 		static struct option long_options[] = {
 			{"conf-file",  1, 0, 'c'},
+			{"foreground", 0, 0, 'f'},
 			{"help",       0, 0, 'h'},
 			{"version",    0, 0, 'v'},
 			{0, 0, 0, 0}
 		};
-		c = getopt_long (argc, argv, "c:shv",
+		c = getopt_long (argc, argv, "c:fshv",
 			long_options, &option_index);
 		if (c == -1) {
 			break;
@@ -1489,10 +1492,15 @@ int readArgs (int argc,
 				exit(1);
 			}
 			break;
+			case 'f':
+			options->foreground=1;
+			break;
 			case 'h':
 			printf("Usage: rinetd [OPTION]\n"
 				"  -c, --conf-file FILE   read configuration "
 				"from FILE\n"
+				"  -f, --foreground       do not run in the "
+				"background\n"
 				"  -h, --help             display this help\n"
 				"  -v, --version          display version "
 				"number\n\n");
