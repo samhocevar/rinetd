@@ -90,11 +90,11 @@ typedef struct {
 #ifdef DEBUG
 #define PERROR perror
 #else
-#define PERROR(x) 
+#define PERROR(x)
 #endif /* DEBUG */
 
 /* We've got to get FIONBIO from somewhere. Try the Solaris location
-        if it isn't defined yet by the above includes. */
+	if it isn't defined yet by the above includes. */
 #ifndef FIONBIO
 #include <sys/filio.h>
 #endif /* FIONBIO */
@@ -152,15 +152,15 @@ int logFormatCommon = 0;
 FILE *logFile = 0;
 
 /* If 'newsize' bytes can be allocated, *data is set to point
-	to them, the previous data is copied, and 1 is returned. 
+	to them, the previous data is copied, and 1 is returned.
 	If 'size' bytes cannot be allocated, *data is UNCHANGED,
-	and 0 is returned. */	
+	and 0 is returned. */
 
 #define SAFE_REALLOC(x, y, z) safeRealloc((void **) (x), (y), (z))
 
 int safeRealloc(void **data, int oldsize, int newsize);
 
-/* 
+/*
 	se: (se)rver sockets
 	re: (re)mote sockets
 	lo: (lo)cal sockets (being redirected to)
@@ -201,7 +201,7 @@ char const *logMessages[] = {
 	"denied",
 	0
 };
-	
+
 #define logDone 0
 #define logAcceptFailed 2
 #define logLocalSocketFailed 4
@@ -307,7 +307,7 @@ void readConfiguration(void)
 				free(seFromHosts[i]);
 				free(seToHosts[i]);
 			}
-		}	
+		}
 		/* Free memory associated with previous set. */
 		free(seFds);
 		free(seLocalAddrs);
@@ -326,7 +326,7 @@ void readConfiguration(void)
 		/* Forget existing allow rules. */
 		for (i = 0; (i < allowRulesTotal); i++) {
 			free(allowRules[i]);
-		}	
+		}
 		/* Free memory associated with previous set. */
 		free(allowRules);
 		globalAllowRules = 0;
@@ -336,7 +336,7 @@ void readConfiguration(void)
 		/* Forget existing deny rules. */
 		for (i = 0; (i < denyRulesTotal); i++) {
 			free(denyRules[i]);
-		}	
+		}
 		/* Free memory associated with previous set. */
 		free(denyRules);
 		globalDenyRules = 0;
@@ -363,33 +363,33 @@ void readConfiguration(void)
 			break;
 		}
 		t = strtok(line, " \t\r\n");
-		if (!strcmp(t, "logfile")) { 	
+		if (!strcmp(t, "logfile")) {
 			continue;
-		} else if (!strcmp(t, "pidlogfile")) { 	
+		} else if (!strcmp(t, "pidlogfile")) {
 			continue;
 		} else if (!strcmp(t, "logcommon")) {
 			continue;
 		} else if (!strcmp(t, "allow")) {
 			allowRulesTotal++;
-		} else if (!strcmp(t, "deny")) {		
+		} else if (!strcmp(t, "deny")) {
 			denyRulesTotal++;
-		} else {	
+		} else {
 			/* A regular forwarding rule */
-			seTotal++;	
+			seTotal++;
 		}
-	}	
+	}
 	fclose(in);
-	seFds = (SOCKET *) malloc(sizeof(int) * seTotal);	
+	seFds = (SOCKET *) malloc(sizeof(int) * seTotal);
 	if (!seFds) {
 		goto lowMemory;
 	}
 	seLocalAddrs = (struct in_addr *) malloc(sizeof(struct in_addr) *
-		seTotal);	
+		seTotal);
 	if (!seLocalAddrs) {
 		goto lowMemory;
 	}
-	seLocalPorts = (unsigned short *) 
-		malloc(sizeof(unsigned short) * seTotal);	
+	seLocalPorts = (unsigned short *)
+		malloc(sizeof(unsigned short) * seTotal);
 	if (!seLocalPorts) {
 		goto lowMemory;
 	}
@@ -399,7 +399,7 @@ void readConfiguration(void)
 		goto lowMemory;
 	}
 	seFromPorts = (int *)
-		malloc(sizeof(int) * seTotal);	
+		malloc(sizeof(int) * seTotal);
 	if (!seFromPorts) {
 		goto lowMemory;
 	}
@@ -409,7 +409,7 @@ void readConfiguration(void)
 		goto lowMemory;
 	}
 	seToPorts = (int *)
-		malloc(sizeof(int) * seTotal);	
+		malloc(sizeof(int) * seTotal);
 	if (!seToPorts) {
 		goto lowMemory;
 	}
@@ -443,7 +443,7 @@ void readConfiguration(void)
 	if (!seDenyRulesTotal) {
 		goto lowMemory;
 	}
-	/* 2. Make a second pass to configure them. */	
+	/* 2. Make a second pass to configure them. */
 	i = 0;
 	ai = 0;
 	di = 0;
@@ -475,14 +475,14 @@ void readConfiguration(void)
 			syslog(LOG_ERR, "no bind address specified "
 				"on file %s, line %d.\n", options.conf_file, lnum);
 			continue;
-		}	
+		}
 		if (!strcmp(bindAddress, "allow")) {
 			char *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
 				syslog(LOG_ERR, "nothing to allow "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
-			}	
+			}
 			if (patternBad(pattern)) {
 				syslog(LOG_ERR, "illegal allow or "
 					"deny pattern. Only digits, ., and\n"
@@ -492,7 +492,7 @@ void readConfiguration(void)
 					"host names.\n");
 				continue;
 			}
-			
+
 			allowRules[ai] = strdup(pattern);
 			if (!allowRules[ai]) {
 				goto lowMemory;
@@ -512,7 +512,7 @@ void readConfiguration(void)
 				syslog(LOG_ERR, "nothing to deny "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
-			}	
+			}
 			denyRules[di] = strdup(pattern);
 			if (!denyRules[di]) {
 				goto lowMemory;
@@ -532,7 +532,7 @@ void readConfiguration(void)
 				syslog(LOG_ERR, "no log file name "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
-			}	
+			}
 			logFileName = strdup(nt);
 			if (!logFileName) {
 				goto lowMemory;
@@ -543,7 +543,7 @@ void readConfiguration(void)
 				syslog(LOG_ERR, "no PID log file name "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
-			}	
+			}
 			pidLogFileName = strdup(nt);
 			if (!pidLogFileName) {
 				goto lowMemory;
@@ -558,7 +558,7 @@ void readConfiguration(void)
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			service = getservbyname(bindPortS, "tcp");	
+			service = getservbyname(bindPortS, "tcp");
 			if (service) {
 				bindPort = ntohs(service->s_port);
 			} else {
@@ -574,14 +574,14 @@ void readConfiguration(void)
 				syslog(LOG_ERR, "no connect address "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
-			}	
+			}
 			connectPortS = strtok(0, " \t\r\n");
 			if (!connectPortS) {
 				syslog(LOG_ERR, "no connect port "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			service = getservbyname(connectPortS, "tcp");	
+			service = getservbyname(connectPortS, "tcp");
 			if (service) {
 				connectPort = ntohs(service->s_port);
 			} else {
@@ -595,10 +595,10 @@ void readConfiguration(void)
 			/* Turn all of this stuff into reasonable addresses */
 			if (!getAddress(bindAddress, &iaddr)) {
 				fprintf(stderr, "rinetd: host %s could not be "
-					"resolved on line %d.\n", 
+					"resolved on line %d.\n",
 					bindAddress, lnum);
 				continue;
-			}	
+			}
 			/* Make a server socket */
 			seFds[i] = socket(PF_INET, SOCK_STREAM, 0);
 			if (seFds[i] == INVALID_SOCKET) {
@@ -618,13 +618,13 @@ void readConfiguration(void)
 			j = 1;
 			setsockopt(seFds[i], SOL_SOCKET, SO_REUSEADDR,
 				(const char *) &j, sizeof(j));
-			if (bind(seFds[i], (struct sockaddr *) 
-				&saddr, sizeof(saddr)) == SOCKET_ERROR) 
+			if (bind(seFds[i], (struct sockaddr *)
+				&saddr, sizeof(saddr)) == SOCKET_ERROR)
 			{
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't bind to "
 					"address %s port %d (%m)\n",
-					bindAddress, bindPort);	
+					bindAddress, bindPort);
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
 				continue;
@@ -633,7 +633,7 @@ void readConfiguration(void)
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't listen to "
 					"address %s port %d (%m)\n",
-					bindAddress, bindPort);	
+					bindAddress, bindPort);
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
 				continue;
@@ -647,7 +647,7 @@ void readConfiguration(void)
 				closesocket(seFds[i]);
 				seFds[i] = INVALID_SOCKET;
 				continue;
-			}	
+			}
 			seLocalAddrs[i] = iaddr;
 			seLocalPorts[i] = htons(connectPort);
 			seFromHosts[i] = strdup(bindAddress);
@@ -734,16 +734,16 @@ void initArrays(void)
 	coLog = (int *) malloc(sizeof(int) * coTotal);
 	coSe = (int *) malloc(sizeof(int) * coTotal);
 	if ((!reFds) || (!loFds) || (!coInputRPos) || (!coInputWPos) ||
-		(!coOutputRPos) || (!coOutputWPos) || 
+		(!coOutputRPos) || (!coOutputWPos) ||
 		(!coClosed) || (!coClosing) ||
 		(!reClosed) || (!loClosed) ||
 		(!coInput) || (!coOutput) ||
-		(!coBytesInput) || (!coBytesOutput) || 
-		(!coLog) || (!coSe) || (!reAddresses)) 
+		(!coBytesInput) || (!coBytesOutput) ||
+		(!coLog) || (!coSe) || (!reAddresses))
 	{
 		syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 		exit(1);
-	}	
+	}
 	for (j = 0; (j < coTotal); j++) {
 		coClosed[j] = 1;
 		coInput[j] = (char *) malloc(sizeof(char) * bufferSpace);
@@ -792,29 +792,29 @@ void selectPass(void) {
 		if (coClosing[i]) {
 			if (!reClosed[i]) {
 				FD_SET(reFds[i], &writefds);
-			}	
+			}
 			if (!loClosed[i]) {
 				FD_SET(loFds[i], &writefds);
-			}	
+			}
 		}
 		/* Get more input if we have room for it */
 		if ((!reClosed[i]) && (coInputRPos[i] < bufferSpace)) {
 			FD_SET(reFds[i], &readfds);
 		}
-		/* Send more output if we have any */	
+		/* Send more output if we have any */
 		if ((!reClosed[i]) && (coOutputWPos[i] < coOutputRPos[i])) {
 			FD_SET(reFds[i], &writefds);
-		}	
-		/* Accept more output from the local 
+		}
+		/* Accept more output from the local
 			server if there's room */
 		if ((!loClosed[i]) && (coOutputRPos[i] < bufferSpace)) {
 			FD_SET(loFds[i], &readfds);
 		}
-		/* Send more input to the local server 
+		/* Send more input to the local server
 			if we have any */
 		if ((!loClosed[i]) && (coInputWPos[i] < coInputRPos[i])) {
 			FD_SET(loFds[i], &writefds);
-		}	
+		}
 	}
 	select(maxfd + 1, &readfds, &writefds, 0, 0);
 	for (i = 0; (i < seTotal); i++) {
@@ -850,7 +850,7 @@ void selectPass(void) {
 		}
 		if (loClosed[i] && reClosed[i]) {
 			coClosed[i] = 1;
-		}	
+		}
 	}
 }
 
@@ -888,7 +888,7 @@ void handleRemoteWrite(int i)
 		reClosed[i] = 1;
 		coClosed[i] = 1;
 		PERROR("rinetd: local closed and no more output");
-		log(i, coSe[i], logDone | coLog[i]); 
+		log(i, coSe[i], logDone | coLog[i]);
 		closesocket(reFds[i]);
 		return;
 	}
@@ -918,7 +918,7 @@ void handleLocalRead(int i)
 	if (bufferSpace == coOutputRPos[i]) {
 		return;
 	}
-	got = recv(loFds[i], coOutput[i] + coOutputRPos[i], 
+	got = recv(loFds[i], coOutput[i] + coOutputRPos[i],
 		bufferSpace - coOutputRPos[i], 0);
 	if (got == 0) {
 		handleCloseFromLocal(i);
@@ -984,12 +984,12 @@ void handleCloseFromLocal(int i)
 			output buffer, so the next write notification
 			tells us for sure that we can close the socket. */
 		int arg = 1024;
-		setsockopt(reFds[i], SOL_SOCKET, SO_SNDLOWAT, 
-			&arg, sizeof(arg));	
+		setsockopt(reFds[i], SOL_SOCKET, SO_SNDLOWAT,
+			&arg, sizeof(arg));
 #endif /* WIN32 */
 #endif /* __linux__ */
 		coLog[i] = logLocalClosedFirst;
-	} 
+	}
 }
 
 void handleCloseFromRemote(int i)
@@ -1009,8 +1009,8 @@ void handleCloseFromRemote(int i)
 			output buffer, so the next write notification
 			tells us for sure that we can close the socket. */
 		int arg = 1024;
-		setsockopt(loFds[i], SOL_SOCKET, SO_SNDLOWAT, 
-			&arg, sizeof(arg));	
+		setsockopt(loFds[i], SOL_SOCKET, SO_SNDLOWAT,
+			&arg, sizeof(arg));
 #endif /* WIN32 */
 #endif /* __linux__ */
 		loClosed[i] = 0;
@@ -1049,7 +1049,7 @@ void handleAccept(int i)
 #ifndef WIN32
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &j, sizeof(j));
 #endif
-	for (j = 0; (j < coTotal); j++) {	
+	for (j = 0; (j < coTotal); j++) {
 		if (coClosed[j]) {
 			index = j;
 			break;
@@ -1059,67 +1059,67 @@ void handleAccept(int i)
 		o = coTotal;
 		coTotal *= 2;
 		if (!SAFE_REALLOC(&reFds, sizeof(int) * o,
-			sizeof(SOCKET) * coTotal)) 
+			sizeof(SOCKET) * coTotal))
 		{
 			goto shortage;
 		}
 		if (!SAFE_REALLOC(&loFds, sizeof(int) * o,
-			sizeof(SOCKET) * coTotal)) 
+			sizeof(SOCKET) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coInputRPos, 
-			sizeof(int) * o, sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coInputRPos,
+			sizeof(int) * o, sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coInputWPos, 
-			sizeof(int) * o, sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coInputWPos,
+			sizeof(int) * o, sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coOutputRPos, 
-			sizeof(int) * o, sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coOutputRPos,
+			sizeof(int) * o, sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coOutputWPos, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coOutputWPos, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coClosed, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coClosed, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coClosing, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coClosing, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&reClosed, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&reClosed, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&loClosed, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&loClosed, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coLog, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coLog, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coSe, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coSe, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coBytesInput, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coBytesInput, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
@@ -1128,24 +1128,24 @@ void handleAccept(int i)
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&coBytesOutput, sizeof(int) * o, 
-			sizeof(int) * coTotal)) 
+		if (!SAFE_REALLOC(&coBytesOutput, sizeof(int) * o,
+			sizeof(int) * coTotal))
 		{
 			goto shortage;
 		}
 		if (!SAFE_REALLOC(&coInput, sizeof(char *) * o,
-			sizeof(char *) * coTotal)) 
+			sizeof(char *) * coTotal))
 		{
 			goto shortage;
 		}
 		if (!SAFE_REALLOC(&coOutput, sizeof(char *) * o,
-			sizeof(char *) * coTotal)) 
+			sizeof(char *) * coTotal))
 		{
 			goto shortage;
 		}
 		for (j = o; (j < coTotal); j++) {
 			coClosed[j] = 1;
-			coInput[j] = (char *) 
+			coInput[j] = (char *)
 				malloc(sizeof(char) * bufferSpace);
 			if (!coInput[j]) {
 				int k;
@@ -1155,7 +1155,7 @@ void handleAccept(int i)
 				}
 				goto shortage;
 			}
-			coOutput[j] = (char *) 
+			coOutput[j] = (char *)
 				malloc(sizeof(char) * bufferSpace);
 			if (!coOutput[j]) {
 				int k;
@@ -1200,11 +1200,11 @@ void handleAccept(int i)
 		if (!good) {
 			refuse(index, logNotAllowed);
 			return;
-		}	
+		}
 	}
 	/* 2. Check global deny rules. If it matches
 		any of the global deny rules, kick it out. */
-	if (globalDenyRules) {			
+	if (globalDenyRules) {
 		for (j = 0; (j < globalDenyRules); j++) {
 			if (match(addressText, denyRules[j])) {
 				refuse(index, logDenied);
@@ -1217,7 +1217,7 @@ void handleAccept(int i)
 	if (seAllowRulesTotal[i]) {
 		int good = 0;
 		for (j = 0; (j < seAllowRulesTotal[i]); j++) {
-			if (match(addressText, 
+			if (match(addressText,
 				allowRules[seAllowRules[i] + j])) {
 				good = 1;
 				break;
@@ -1226,13 +1226,13 @@ void handleAccept(int i)
 		if (!good) {
 			refuse(index, logNotAllowed);
 			return;
-		}	
+		}
 	}
-	/* 2. Check deny rules specific to this forwarding rule. If 
+	/* 2. Check deny rules specific to this forwarding rule. If
 		it matches any of the deny rules, kick it out. */
-	if (seDenyRulesTotal[i]) {			
+	if (seDenyRulesTotal[i]) {
 		for (j = 0; (j < seDenyRulesTotal[i]); j++) {
-			if (match(addressText, 
+			if (match(addressText,
 				denyRules[seDenyRules[i] + j])) {
 				refuse(index, logDenied);
 			}
@@ -1241,13 +1241,13 @@ void handleAccept(int i)
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
-	openLocalFd(i, index);	
+	openLocalFd(i, index);
 	return;
 shortage:
 	syslog(LOG_ERR, "not enough memory to add slots. "
 		"Currently %d slots.\n", o);
 	/* Go back to the previous total number of slots */
-	coTotal = o;	
+	coTotal = o;
 }
 
 void openLocalFd(int se, int i)
@@ -1260,7 +1260,7 @@ void openLocalFd(int se, int i)
 		closesocket(reFds[i]);
 		reClosed[i] = 1;
 		loClosed[i] = 1;
-		coClosed[i] = 1;	
+		coClosed[i] = 1;
 		log(i, coSe[i], logLocalSocketFailed);
 		return;
 	}
@@ -1280,7 +1280,7 @@ void openLocalFd(int se, int i)
 		closesocket(reFds[i]);
 		reClosed[i] = 1;
 		loClosed[i] = 1;
-		coClosed[i] = 1;	
+		coClosed[i] = 1;
 		log(i, coSe[i], logLocalBindFailed);
 		return;
 	}
@@ -1301,8 +1301,8 @@ void openLocalFd(int se, int i)
 #endif /* WIN32 */
 	j = 1;
 	ioctlsocket(loFds[i], FIONBIO, &j);
-	if (connect(loFds[i], (struct sockaddr *)&saddr, 
-		sizeof(struct sockaddr_in)) == INVALID_SOCKET) 
+	if (connect(loFds[i], (struct sockaddr *)&saddr,
+		sizeof(struct sockaddr_in)) == INVALID_SOCKET)
 	{
 		if ((GetLastError() != WSAEINPROGRESS) &&
 			(GetLastError() != WSAEWOULDBLOCK))
@@ -1312,7 +1312,7 @@ void openLocalFd(int se, int i)
 			closesocket(reFds[i]);
 			reClosed[i] = 1;
 			loClosed[i] = 1;
-			coClosed[i] = 1;	
+			coClosed[i] = 1;
 			log(i, coSe[i], logLocalConnectFailed);
 			return;
 		}
@@ -1358,7 +1358,7 @@ int getAddress(char *host, struct in_addr *iaddr)
 			(void *) h->h_addr,
 			4);
 		return 1;
-        } else {
+	} else {
 		iaddr->s_addr = inet_addr(host);
 		return 1;
 	}
@@ -1393,7 +1393,7 @@ int safeRealloc(void **data, int oldsize, int newsize)
 	}
 	if (newsize < oldsize) {
 		memcpy(newData, *data, newsize);
-	} else {	
+	} else {
 		memcpy(newData, *data, oldsize);
 	}
 	*data = newData;
@@ -1453,7 +1453,7 @@ void log(int i, int coSe, int result)
 		timz = -timz;
 	}
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
-	
+
 	if (i != -1) {
 		reAddress = reAddresses + i;
 		bytesOutput = coBytesOutput[i];
@@ -1479,8 +1479,8 @@ void log(int i, int coSe, int result)
 				error and not analyze the "URL." We put a result
 				message into our "URL" instead. The last field
 				is an extra, giving the number of input bytes,
-				after several placeholders meant to fill the 
-				positions frequently occupied by user agent, 
+				after several placeholders meant to fill the
+				positions frequently occupied by user agent,
 				referrer, and server name information. */
 			fprintf(logFile, "%s - - "
 				"[%s %c%.2d%.2d] "
@@ -1505,8 +1505,8 @@ void log(int i, int coSe, int result)
 				addressText,
 				seFromHosts[coSe], seFromPorts[coSe],
 				seToHosts[coSe], seToPorts[coSe],
-				bytesInput,	
-				bytesOutput,	
+				bytesInput,
+				bytesOutput,
 				logMessages[result]);
 		}
 	}
@@ -1517,7 +1517,7 @@ int readArgs (int argc,
 	RinetdOptions *options)
 {
 	int c;
-  
+
 	while (1) {
 		int option_index = 0;
 		static struct option long_options[] = {
@@ -1592,7 +1592,7 @@ int patternBad(char *pattern)
 	char *p = pattern;
 	while (*p) {
 		if (isdigit(*p) || ((*p) == '?') || ((*p) == '*') ||
-			((*p) == '.')) 
+			((*p) == '.'))
 		{
 			p++;
 		}
@@ -1606,7 +1606,7 @@ void refuse(int index, int logCode)
 	closesocket(reFds[index]);
 	reClosed[index] = 1;
 	loClosed[index] = 1;
-	coClosed[index] = 1;	
+	coClosed[index] = 1;
 	log(index, coSe[index], logCode);
 }
 

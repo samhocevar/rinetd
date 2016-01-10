@@ -34,9 +34,9 @@ int matchBody(char const *sorig, char const *p, int nocase)
 		If the word matches s, and the word
 		and s contain end-of-string at that
 		point, return success.
-	
+
 		\ escapes the next character, including \ itself (6.0).
-	
+
 		For each *:
 
 			Find the next occurrence of the next word
@@ -48,8 +48,8 @@ int matchBody(char const *sorig, char const *p, int nocase)
 			If the word is not found, return failure.
 
 			If the next word is empty, advance past the *.
-	
-		Behavior of ?: advance one character in s and p. 
+
+		Behavior of ?: advance one character in s and p.
 
 		Addendum: consider the | character to be a logical OR
 		separating distinct patterns. */
@@ -75,7 +75,7 @@ int matchBody(char const *sorig, char const *p, int nocase)
 			if (CASE(*p) != CASE(*s)) {
 				goto nextPattern;
 			}
-			p++;		
+			p++;
 			s++;
 			continue;
 		}
@@ -95,8 +95,8 @@ int matchBody(char const *sorig, char const *p, int nocase)
 				If the word is not found, return failure.
 
 				If the next word is empty, advance. */
-			p++;	
-			wordLen = 0;	
+			p++;
+			wordLen = 0;
 			word = p;
 			while (1) {
 				if ((*p) == '*') {
@@ -107,7 +107,7 @@ int matchBody(char const *sorig, char const *p, int nocase)
 					break;
 				}
 				p++;
-			} 
+			}
 			wordPos = 0;
 			while (1) {
 				if (wordPos == wordLen) {
@@ -117,11 +117,11 @@ int matchBody(char const *sorig, char const *p, int nocase)
 					break;
 				}
 				if ((((CASE(*s)) == CASE(word[wordPos])) ||
-					((*s == '\0') && 
+					((*s == '\0') &&
 						(word[wordPos] == '|'))) ||
-					(((*s != '\0') && (*s != '|')) && 
+					(((*s != '\0') && (*s != '|')) &&
 						(word[wordPos] == '?')))
-				{	
+				{
 					wordPos++;
 					s++;
 				} else {
@@ -132,10 +132,10 @@ int matchBody(char const *sorig, char const *p, int nocase)
 					s++;
 					wordPos = 0;
 				}
-			}	 
+			}
 			break;
 			case '?':
-			p++;		
+			p++;
 			s++;
 			break;
 			default:
@@ -145,8 +145,8 @@ int matchBody(char const *sorig, char const *p, int nocase)
 			}
 			if (CASE(*p) != CASE(*s)) {
 				goto nextPattern;
-			} 
-			p++;		
+			}
+			p++;
 			s++;
 			break;
 		}
@@ -155,7 +155,7 @@ nextPattern:
 		while (1) {
 			if (*p == '\0') {
 				return 0;
-			}		
+			}
 			if (*p == '|') {
 				p++;
 				s = sorig;
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
 		printf("%s --> %s\n", s, argv[1]);
 		if (match(s, argv[1])) {
 			printf("Match\n");
-		} else {	
+		} else {
 			printf("No Match\n");
 		}
 	}
