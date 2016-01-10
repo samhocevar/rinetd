@@ -699,6 +699,7 @@ int getConfLine(FILE *in, char *line, int space, int *lnum)
 {
 	char *p;
 	while (1) {
+		(*lnum)++;
 		if (!fgets(line, space, in)) {
 			return 0;
 		}
@@ -714,7 +715,6 @@ int getConfLine(FILE *in, char *line, int space, int *lnum)
 			/* Comment lines are also OK */
 			continue;
 		}
-		(*lnum)++;
 		return 1;
 	}
 }
