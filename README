@@ -1,0 +1,15 @@
+rinetd version 0.41, by Thomas Boutell. Released under
+the terms of the GNU Public License, version 2 or later. 
+
+This program is used to efficiently redirect connections 
+from one IP address/port combination to another. It is
+useful when operating virtual servers, firewalls
+and the like.
+
+To build, check the Makefile for platform-specific
+details and then type make. To install, type
+"make install" as root.
+
+For documentation run "make install", then type
+"man rinetd" for details.
+

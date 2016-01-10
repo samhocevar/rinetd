@@ -1,0 +1,110 @@
+<html>
+<head>
+<title>RINETD(8)</title>
+</head>
+<body bgcolor="#FFFFF0">
+<!--
+ Copyright (c) 1997, 1998, Thomas Boutell and Boutell.Com, Inc.
+ This software is released for free use under the terms of
+ the GNU Public License, version 2 or higher.
+-->
+<table>
+<tr>
+<th width=33% align=left>RINETD(8)
+<th width=33% align=right>Unix System Manager's Manual
+<th width=33% align=right>RINETD(8)
+</tr>
+</table>
+<p>
+<font color="#FF8888" size="4">NAME</font>
+<p>
+rinetd -- internet ``redirection server''
+<p>
+<font color="#FF8888" size="4">SYNOPSIS</font>
+<p>
+<code>/usr/sbin/rinetd</code>
+<p>
+<font color="#FF8888" size="4">VERSION</font>
+<p>
+Version 0.41, 2/11/1998.
+<p>
+<font color="#FF8888" size="4">WHERE TO GET</font>
+<p>
+<a href="ftp://ftp.boutell.com/pub/boutell/rinetd/rinetd.tar.gz">By
+anonymous FTP from ftp.boutell.com</a> in the subdirectory
+<code>boutell/rinetd</code> as the file <code>rinetd.tar.gz</code>.
+<p>
+<font color="#FF8888" size="4">DESCRIPTION</font>
+<p>
+Redirects TCP connections from one IP address and port to another. rinetd
+is a single-process server which handles any number of connections to
+the address/port pairs specified in the file <code>/etc/rinetd.conf</code>. 
+Since rinetd runs as a single process using nonblocking I/O, it is
+able to redirect a large number of connections without a severe
+impact on the machine. This makes it practical to run TCP services
+on machines inside an IP masquerading firewall.
+<p>
+rinetd should be launched at boot time, using the following syntax:
+<p>
+<code>/usr/sbin/rinetd</code>
+<p>
+The format of <code>/etc/rinetd.conf</code> is as follows:
+<p>
+<code>bindaddress bindport connectaddress connectport</code>
+<p>
+For example:
+<p>
+<code>206.125.69.81 80 10.1.1.2 80</code>
+<p>
+Would redirect all connections to port 80 of the "real" IP address
+206.125.69.81, which could be a virtual interface, through
+rinetd to port 80 of the address 10.1.1.2, which would typically 
+be a machine on the inside of a firewall which has no
+direct routing to the outside world.
+<p>
+Service names can be specified instead of port numbers. On most systems,
+service names are defined in the file /etc/services.
+<p>
+Both IP addresses and hostnames are accepted for
+bindaddress and connectaddress.
+<p>
+rinetd redirects TCP connections only. There is
+no support for UDP.
+<p>
+The kill -1 signal (SIGHUP) can be used to cause rinetd
+to reload its configuration file <strong>without</strong> interrupting existing
+connections (this was added in version 0.4). Under Linux\(tm the process id 
+is saved in the file \fI/var/run/rinetd.pid\fR
+to facilitate the kill -HUP (added in version 0.41).
+<p>
+<font color="#FF8888" size="4">BUGS</font>
+<p>
+rinetd does not currently produce any log information. The
+server redirected to is not able to identify the host the
+client really came from. Sockets would theoretically lose
+data when closed with <code>SO_LINGER</code> turned off, but in Linux
+this is not the case (kernel source comments support this
+belief on my part). On non-Linux platforms, alternate code
+which uses a different trick to work around blocking close()
+is provided, but this code is untested. The manpage
+is sketchy.
+<p>
+<font color="#FF8888" size="4">LICENSE</font>
+<p>
+Copyright (c) 1997, 1998, 
+<a href="http://www.boutell.com/boutell">Thomas Boutell</a> and 
+<a href="http://www.boutell.com/">Boutell.Com, Inc.</a>
+This software is released for free use under the terms of
+the GNU Public License, version 2 or higher.
+<p>
+<font color="#FF8888" size="4">CONTACT INFORMATION</font>
+<p>
+See <a href="http://www.boutell.com/rinetd">the rinetd web page</a> 
+for the latest release.
+Thomas Boutell can be reached by email: 
+<a href="mailto:boutell@boutell.com">boutell@boutell.com</a>
+<p>
+<font color="#FF8888" size="4">THANKS</font>
+<p>
+Thanks are due to Bill Davidsen.
+
