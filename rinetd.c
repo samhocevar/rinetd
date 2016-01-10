@@ -493,11 +493,10 @@ void readConfiguration(void)
 				continue;
 			}
 			
-			allowRules[ai] = malloc(strlen(pattern) + 1);
+			allowRules[ai] = strdup(pattern);
 			if (!allowRules[ai]) {
 				goto lowMemory;
 			}
-			strcpy(allowRules[ai], pattern);
 			if (i > 0) {
 				if (seAllowRulesTotal[i - 1] == 0) {
 					seAllowRules[i - 1] = ai;
@@ -514,11 +513,10 @@ void readConfiguration(void)
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
-			denyRules[di] = malloc(strlen(pattern) + 1);
+			denyRules[di] = strdup(pattern);
 			if (!denyRules[di]) {
 				goto lowMemory;
 			}
-			strcpy(denyRules[di], pattern);
 			if (i > 0) {
 				if (seDenyRulesTotal[i - 1] == 0) {
 					seDenyRules[i - 1] = di;
@@ -535,11 +533,10 @@ void readConfiguration(void)
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
-			logFileName = malloc(strlen(nt) + 1);
+			logFileName = strdup(nt);
 			if (!logFileName) {
 				goto lowMemory;
 			}
-			strcpy(logFileName, nt);
 		} else if (!strcmp(bindAddress, "pidlogfile")) {
 			char *nt = strtok(0, " \t\r\n");
 			if (!nt) {
@@ -547,11 +544,10 @@ void readConfiguration(void)
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}	
-			pidLogFileName = malloc(strlen(nt) + 1);
+			pidLogFileName = strdup(nt);
 			if (!pidLogFileName) {
 				goto lowMemory;
 			}
-			strcpy(pidLogFileName, nt);
 		} else if (!strcmp(bindAddress, "logcommon")) {
 			logFormatCommon = 1;
 		} else {
@@ -654,17 +650,15 @@ void readConfiguration(void)
 			}	
 			seLocalAddrs[i] = iaddr;
 			seLocalPorts[i] = htons(connectPort);
-			seFromHosts[i] = malloc(strlen(bindAddress) + 1);
+			seFromHosts[i] = strdup(bindAddress);
 			if (!seFromHosts[i]) {
 				goto lowMemory;
 			}
-			strcpy(seFromHosts[i], bindAddress);
 			seFromPorts[i] = bindPort;
-			seToHosts[i] = malloc(strlen(connectAddress) + 1);
+			seToHosts[i] = strdup(connectAddress);
 			if (!seToHosts[i]) {
 				goto lowMemory;
 			}
-			strcpy(seToHosts[i], connectAddress);
 			seToPorts[i] = connectPort;
 			i++;
 			if (i < seTotal) {
