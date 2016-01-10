@@ -196,22 +196,28 @@ char const *logMessages[] = {
 	0,
 	"local-connect-failed -",
 	0,
+	"opened",
+	0,
 	"not-allowed",
 	0,
 	"denied",
-	0
+	0,
 };
 
-#define logDone 0
-#define logAcceptFailed 2
-#define logLocalSocketFailed 4
-#define logLocalBindFailed 6
-#define logLocalConnectFailed 8
-#define logNotAllowed 10
-#define logDenied 12
+enum
+{
+	logDone = 0,
+	logAcceptFailed = 2,
+	logLocalSocketFailed = 4,
+	logLocalBindFailed = 6,
+	logLocalConnectFailed = 8,
+	logOpened = 10,
+	logNotAllowed = 12,
+	logDenied = 14,
 
-#define logLocalClosedFirst 0
-#define logRemoteClosedFirst 1
+	logLocalClosedFirst = 0,
+	logRemoteClosedFirst = 1,
+};
 
 /* Option parsing */
 
@@ -1321,6 +1327,7 @@ void openLocalFd(int se, int i)
 			return;
 		}
 	}
+	logEvent(i, coSe[i], logOpened);
 }
 
 int getAddress(char *host, struct in_addr *iaddr)
