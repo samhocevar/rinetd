@@ -1330,7 +1330,7 @@ int getAddress(char *host, struct in_addr *iaddr)
 	char *p = host;
 	int ishost = 0;
 	while (*p) {
-		if (!(isdigit(*p) || ((*p) == '.'))) {
+		if (!isdigit(*p) && (*p) != '.') {
 			ishost = 1;
 			break;
 		}
@@ -1340,6 +1340,23 @@ int getAddress(char *host, struct in_addr *iaddr)
 		struct hostent *h;
 		h = gethostbyname(host);
 		if (!h) {
+			const char *msg = "(unknown DNS error)";
+			switch(h_errno)
+			{
+			case HOST_NOT_FOUND:
+				msg = "The specified host is unknown.";
+				break;
+			case NO_ADDRESS:
+				msg = "The requested name is valid but does not have an IP address.";
+				break;
+			case NO_RECOVERY:
+				msg = "A non-recoverable name server error occurred.";
+				break;
+			case TRY_AGAIN:
+				msg = "A temporary error occurred on an authoritative name server.  Try again later.";
+				break;
+			}
+			syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
 			return 0;
 		}
 		memcpy(
