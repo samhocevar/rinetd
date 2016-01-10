@@ -16,13 +16,20 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <getopt.h>
 #include <errno.h>
 #include <syslog.h>
 #define INVALID_SOCKET (-1)
-#include <sys/time.h>
+#if TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#elif HAVE_SYS_TIME_H
+# include <sys/time.h>
+#endif
 #endif /* WIN32 */
 
 #include <stdio.h>
@@ -30,7 +37,9 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#if WIN32 || (!TIME_WITH_SYS_TIME && !HAVE_SYS_TIME_H)
 #include <time.h>
+#endif
 #include <ctype.h>
 
 #ifndef WIN32
@@ -63,17 +72,7 @@ int closesocket(int s) {
 typedef struct {
 	int dummy;
 } WSADATA;
-
-void Sleep(long ms);
-
-void Sleep(long ms)
-{
-	struct timeval tv;
-	tv.tv_sec = ms / 1000;
-	tv.tv_usec = ms * 1000;
-	select(0, 0, 0, 0, &tv);
-}
-#else 
+#else
 /* WIN32 doesn't really have WSAEAGAIN */
 #ifndef WSAEAGAIN
 #define WSAEAGAIN WSAEWOULDBLOCK
@@ -124,7 +123,7 @@ int globalDenyRules = 0;
 
 SOCKET *reFds = 0;
 SOCKET *loFds = 0;
-unsigned char *reAddresses = 0;
+struct in_addr *reAddresses = NULL;
 int *coInputRPos = 0;
 int *coInputWPos = 0;
 int *coOutputRPos = 0;
@@ -252,10 +251,13 @@ int main(int argc, char *argv[])
 	}
 	readArgs(argc, argv, &options);
 #ifndef WIN32
-#ifndef DEBUG
+#ifdef DEBUG
+	{
+#elif HAVE_DAEMON
+	if (options.foreground || !daemon(0, 0)) {
+#else
 	if (options.foreground || !fork()) {
-		if (options.foreground || !fork()) {
-#endif /* DEBUG */
+#endif
 #ifdef HAVE_SIGACTION
 			struct sigaction act;
 			act.sa_handler=SIG_IGN;
@@ -277,13 +279,10 @@ int main(int argc, char *argv[])
 			selectLoop();
 #ifndef WIN32
 #ifndef DEBUG
-		} else {
-			exit(0);
-		}
 	} else {
 		exit(0);
+#endif
 	}
-#endif /* DEBUG */
 #endif /* WIN32 */
 	return 0;
 }
@@ -737,7 +736,7 @@ void initArrays(void)
 	coOutput = (char **) malloc(sizeof(char *) * coTotal);
 	coBytesInput = (int *) malloc(sizeof(int) * coTotal);
 	coBytesOutput = (int *) malloc(sizeof(int) * coTotal);
-	reAddresses = (unsigned char *) malloc(coTotal * 4);
+	reAddresses = (struct in_addr *) malloc(sizeof(struct in_addr) * coTotal);
 	coLog = (int *) malloc(sizeof(int) * coTotal);
 	coSe = (int *) malloc(sizeof(int) * coTotal);
 	if ((!reFds) || (!loFds) || (!coInputRPos) || (!coInputWPos) ||
@@ -976,7 +975,6 @@ void handleLocalWrite(int i)
 
 void handleCloseFromLocal(int i)
 {
-	int arg;
 	coClosing[i] = 1;
 	/* The local end fizzled out, so make sure
 		we're all done with that */
@@ -991,7 +989,7 @@ void handleCloseFromLocal(int i)
 		/* Request a low-water mark equal to the entire
 			output buffer, so the next write notification
 			tells us for sure that we can close the socket. */
-		arg = 1024;
+		int arg = 1024;
 		setsockopt(reFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
 #endif /* WIN32 */
@@ -1002,7 +1000,6 @@ void handleCloseFromLocal(int i)
 
 void handleCloseFromRemote(int i)
 {
-	int arg;
 	coClosing[i] = 1;
 	/* The remote end fizzled out, so make sure
 		we're all done with that */
@@ -1017,7 +1014,7 @@ void handleCloseFromRemote(int i)
 		/* Request a low-water mark equal to the entire
 			output buffer, so the next write notification
 			tells us for sure that we can close the socket. */
-		arg = 1024;
+		int arg = 1024;
 		setsockopt(loFds[i], SOL_SOCKET, SO_SNDLOWAT, 
 			&arg, sizeof(arg));	
 #endif /* WIN32 */
@@ -1033,8 +1030,8 @@ void handleAccept(int i)
 {
 	struct sockaddr addr;
 	struct sockaddr_in *sin;
-	unsigned char address[4];
-	char addressText[64];
+	struct in_addr address;
+	char const *addressText;
 	int j;
 	int addrlen;
 	int index = -1;
@@ -1132,8 +1129,8 @@ void handleAccept(int i)
 		{
 			goto shortage;
 		}
-		if (!SAFE_REALLOC(&reAddresses, 4 * o, 
-			4 * coTotal)) 
+		if (!SAFE_REALLOC(&reAddresses, sizeof(struct in_addr) * o,
+			sizeof(struct in_addr) * coTotal))
 		{
 			goto shortage;
 		}
@@ -1192,12 +1189,8 @@ void handleAccept(int i)
 	coLog[index] = 0;
 	coSe[index] = i;
 	sin = (struct sockaddr_in *) &addr;
-	memcpy(address, &(sin->sin_addr.s_addr), 4);
-	memcpy(reAddresses + index * 4, address, 4);
-	/* Now, do we want to accept this connection? 
-		Format it for comparison to a pattern. */
-	sprintf(addressText, "%d.%d.%d.%d",
-		address[0], address[1], address[2], address[3]);
+	reAddresses[index].s_addr = address.s_addr = sin->sin_addr.s_addr;
+	addressText = inet_ntoa(address);
 	/* 1. Check global allow rules. If there are no
 		global allow rules, it's presumed OK at
 		this step. If there are any, and it doesn't
@@ -1282,6 +1275,8 @@ void openLocalFd(int se, int i)
 		maxfd = loFds[i];
 	}
 #endif /* WIN32 */
+
+#if 0 // You don't need bind(2) on a socket you'll use for connect(2).
 	/* Bind the local socket */
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = INADDR_ANY;
@@ -1295,6 +1290,8 @@ void openLocalFd(int se, int i)
 		log(i, coSe[i], logLocalBindFailed);
 		return;
 	}
+#endif
+
 	memset(&saddr, 0, sizeof(struct sockaddr_in));
 	saddr.sin_family = AF_INET;
 	memcpy(&saddr.sin_addr, &seLocalAddrs[se], sizeof(struct in_addr));
@@ -1406,21 +1403,28 @@ void RegisterPID(void)
 		/* non-fatal, non-Linux may lack /var/run... */
 		fprintf(stderr, "rinetd: Couldn't write to "
 			"%s. PID was not logged.\n", pid_file_name);
+		goto error;
 	} else {
-		/* error checking deliberately omitted */
 		fprintf(pid_file, "%d\n", getpid());
-		fclose(pid_file);
+		/* errors aren't fatal */
+		if(fclose(pid_file))
+			goto error;
 	}
+	return;
+error:
+	syslog(LOG_ERR, "Couldn't write to "
+		"%s. PID was not logged (%m).\n", pid_file_name);
 #endif	/* __linux__ */
 }
 
-unsigned char nullAddress[4] = { 0, 0, 0, 0 };
+struct in_addr nullAddress = { 0 };
 
 struct tm *get_gmtoff(int *tz);
 
 void log(int i, int coSe, int result)
 {
-	unsigned char *reAddress;
+	struct in_addr *reAddress;
+	char const *addressText;
 	int bytesOutput;
 	int bytesInput;
 	/* Bit of borrowing from Apache logging module here,
@@ -1440,14 +1444,19 @@ void log(int i, int coSe, int result)
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 	
 	if (i != -1) {
-		reAddress = reAddresses + i * 4;
+		reAddress = reAddresses + i;
 		bytesOutput = coBytesOutput[i];
 		bytesInput = coBytesInput[i];
 	} else {
-		reAddress = nullAddress;
+		reAddress = &nullAddress;
 		bytesOutput = 0;
 		bytesInput = 0;
 	}
+	addressText = inet_ntoa(*reAddress);
+	if(result==logNotAllowed || result==logDenied)
+		syslog(LOG_INFO,"%s %s"
+			,addressText
+			,logMessages[result]);
 	if (logFile) {
 		if (logFormatCommon) {
 			/* Fake a common log format log file in a way that
@@ -1462,14 +1471,11 @@ void log(int i, int coSe, int result)
 				after several placeholders meant to fill the 
 				positions frequently occupied by user agent, 
 				referrer, and server name information. */
-			fprintf(logFile, "%d.%d.%d.%d - - "
+			fprintf(logFile, "%s - - "
 				"[%s %c%.2d%.2d] "
 				"\"GET /rinetd-services/%s/%d/%s/%d/%s HTTP/1.0\" "
 				"200 %d - - - %d\n",
-				reAddress[0],
-				reAddress[1],
-				reAddress[2],
-				reAddress[3],
+				addressText,
 				tstr,
 				sign,
 				timz / 60,
@@ -1482,13 +1488,10 @@ void log(int i, int coSe, int result)
 		} else {
 			/* Write an rinetd-specific log entry with a
 				less goofy format. */
-			fprintf(logFile, "%s\t%d.%d.%d.%d\t%s\t%d\t%s\t%d\t%d"
+			fprintf(logFile, "%s\t%s\t%s\t%d\t%s\t%d\t%d"
 					"\t%d\t%s\n",
 				tstr,
-				reAddress[0],
-				reAddress[1],
-				reAddress[2],
-				reAddress[3],
+				addressText,
 				seFromHosts[coSe], seFromPorts[coSe],
 				seToHosts[coSe], seToPorts[coSe],
 				bytesInput,	
