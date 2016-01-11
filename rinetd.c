@@ -389,6 +389,9 @@ void readConfiguration(void)
 	if (!seFds) {
 		goto lowMemory;
 	}
+	for (i = 0; i < seTotal; ++i) {
+		seFds[i] = INVALID_SOCKET;
+	}
 	seLocalAddrs = (struct in_addr *) malloc(sizeof(struct in_addr) *
 		seTotal);
 	if (!seLocalAddrs) {
