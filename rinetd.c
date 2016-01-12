@@ -397,11 +397,11 @@ void readConfiguration(void)
 	}
 	for (int i = 0; ; ) {
 		char *bindAddress;
-		unsigned short bindPort;
+		unsigned int bindPort;
 		char *connectAddress;
 		char *bindPortS;
 		char *connectPortS;
-		unsigned short connectPort;
+		unsigned int connectPort;
 		struct in_addr iaddr;
 		struct sockaddr_in saddr;
 		struct servent *service;
@@ -503,7 +503,7 @@ void readConfiguration(void)
 			} else {
 				bindPort = atoi(bindPortS);
 			}
-			if ((bindPort == 0) || (bindPort >= 65536)) {
+			if (bindPort == 0 || bindPort >= 65536) {
 				syslog(LOG_ERR, "bind port missing "
 					"or out of range on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
@@ -526,7 +526,7 @@ void readConfiguration(void)
 			} else {
 				connectPort = atoi(connectPortS);
 			}
-			if ((connectPort == 0) || (connectPort >= 65536)) {
+			if (connectPort == 0 || connectPort >= 65536) {
 				syslog(LOG_ERR, "bind port missing "
 					"or out of range on file %s,  %d.\n", options.conf_file, lnum);
 				continue;
