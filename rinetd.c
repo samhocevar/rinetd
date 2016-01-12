@@ -1,35 +1,35 @@
 #if HAVE_CONFIG_H
-#include <config.h>
+#	include <config.h>
 #endif
 
 #ifndef RETSIGTYPE
-#define RETSIGTYPE void
+#	define RETSIGTYPE void
 #endif
 
 #ifdef WIN32
-#include <windows.h>
-#include <winsock.h>
-#include "getopt.h"
-#define syslog fprintf
-#define LOG_ERR stderr
+#	include <windows.h>
+#	include <winsock.h>
+#	include "getopt.h"
+#	define syslog fprintf
+#	define LOG_ERR stderr
 #else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <getopt.h>
-#include <errno.h>
-#include <syslog.h>
-#define INVALID_SOCKET (-1)
-#if TIME_WITH_SYS_TIME
-# include <sys/time.h>
-# include <time.h>
-#elif HAVE_SYS_TIME_H
-# include <sys/time.h>
-#endif
+#	include <sys/types.h>
+#	include <sys/socket.h>
+#	include <sys/ioctl.h>
+#	include <unistd.h>
+#	include <netdb.h>
+#	include <netinet/in.h>
+#	include <arpa/inet.h>
+#	include <getopt.h>
+#	include <errno.h>
+#	include <syslog.h>
+#	define INVALID_SOCKET (-1)
+#	if TIME_WITH_SYS_TIME
+#		include <sys/time.h>
+#		include <time.h>
+#	elif HAVE_SYS_TIME_H
+#		include <sys/time.h>
+#	endif
 #endif /* WIN32 */
 
 #include <stdio.h>
@@ -38,65 +38,55 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #if WIN32 || (!TIME_WITH_SYS_TIME && !HAVE_SYS_TIME_H)
-#include <time.h>
+#	include <time.h>
 #endif
 #include <ctype.h>
 
 #ifndef WIN32
-/* Windows sockets compatibility defines */
-#define INVALID_SOCKET (-1)
-#define SOCKET_ERROR (-1)
-int closesocket(int s);
-
-int closesocket(int s) {
+	/* Windows sockets compatibility defines */
+#	define INVALID_SOCKET (-1)
+#	define SOCKET_ERROR (-1)
+static int closesocket(int s) {
 	return close(s);
 }
-#define ioctlsocket ioctl
-#define MAKEWORD(a, b)
-#define WSAStartup(a, b) (0)
-#define	WSACleanup()
-#ifdef __MAC__
-/* The constants for these are a little screwy in the prelinked
-	MSL GUSI lib and we can't rebuild it, so roll with it */
-#define WSAEWOULDBLOCK EWOULDBLOCK
-#define WSAEAGAIN EAGAIN
-#define WSAEINPROGRESS EINPROGRESS
-#else
-#define WSAEWOULDBLOCK EWOULDBLOCK
-#define WSAEAGAIN EAGAIN
-#define WSAEINPROGRESS EINPROGRESS
-#endif /* __MAC__ */
-#define WSAEINTR EINTR
-#define SOCKET int
-#define GetLastError() (errno)
+#	define ioctlsocket ioctl
+#	define MAKEWORD(a, b)
+#	define WSAStartup(a, b) (0)
+#	define	WSACleanup()
+#	ifdef __MAC__
+		/* The constants for these are a little screwy in the prelinked
+			MSL GUSI lib and we can't rebuild it, so roll with it */
+#		define WSAEWOULDBLOCK EWOULDBLOCK
+#		define WSAEAGAIN EAGAIN
+#		define WSAEINPROGRESS EINPROGRESS
+#	else
+#		define WSAEWOULDBLOCK EWOULDBLOCK
+#		define WSAEAGAIN EAGAIN
+#		define WSAEINPROGRESS EINPROGRESS
+#	endif /* __MAC__ */
+#	define WSAEINTR EINTR
+#	define SOCKET int
+#	define GetLastError() (errno)
 typedef struct {
 	int dummy;
 } WSADATA;
 #else
-/* WIN32 doesn't really have WSAEAGAIN */
-#ifndef WSAEAGAIN
-#define WSAEAGAIN WSAEWOULDBLOCK
-#endif
+	/* WIN32 doesn't really have WSAEAGAIN */
+#	ifndef WSAEAGAIN
+#		define WSAEAGAIN WSAEWOULDBLOCK
+#	endif
 #endif /* WIN32 */
 
-#ifndef TRUE
-#define TRUE 1
-#endif
-
-#ifndef FALSE
-#define FALSE 0
-#endif
-
 #ifdef DEBUG
-#define PERROR perror
+#	define PERROR perror
 #else
-#define PERROR(x)
+#	define PERROR(x)
 #endif /* DEBUG */
 
 /* We've got to get FIONBIO from somewhere. Try the Solaris location
 	if it isn't defined yet by the above includes. */
 #ifndef FIONBIO
-#include <sys/filio.h>
+#	include <sys/filio.h>
 #endif /* FIONBIO */
 
 #include "match.h"
@@ -162,9 +152,7 @@ FILE *logFile = 0;
 	If 'size' bytes cannot be allocated, *data is UNCHANGED,
 	and 0 is returned. */
 
-#define SAFE_REALLOC(x, y, z) safeRealloc((void **) (x), (y), (z))
-
-int safeRealloc(void **data, int oldsize, int newsize);
+static int safeRealloc(void **data, int oldsize, int newsize);
 
 /*
 	se: (se)rver sockets
@@ -173,7 +161,7 @@ int safeRealloc(void **data, int oldsize, int newsize);
 	co: connections
 */
 
-#define bufferSpace 1024
+static int const bufferSpace = 1024;
 
 void readConfiguration();
 
@@ -994,7 +982,7 @@ void handleAccept(int i)
 	if (cnx == NULL) {
 		o = coTotal;
 		coTotal *= 2;
-		if (!SAFE_REALLOC(&coInfo, sizeof(ConnectionInfo) * o,
+		if (!safeRealloc((void **)&coInfo, sizeof(ConnectionInfo) * o,
 			sizeof(ConnectionInfo) * coTotal))
 		{
 			goto shortage;
@@ -1243,7 +1231,7 @@ RETSIGTYPE hup(int s)
 }
 #endif /* WIN32 */
 
-int safeRealloc(void **data, int oldsize, int newsize)
+static int safeRealloc(void **data, int oldsize, int newsize)
 {
 	void *newData = malloc(newsize + 1);
 	if (!newData) {
