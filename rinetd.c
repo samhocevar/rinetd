@@ -387,6 +387,7 @@ void readConfiguration(void)
 		goto lowMemory;
 	}
 	for (i = 0; i < seTotal; ++i) {
+		memset(&seInfo[i], 0, sizeof(seInfo[i]));
 		seInfo[i].fd = INVALID_SOCKET;
 	}
 	allowRules = (char **)
@@ -407,10 +408,6 @@ void readConfiguration(void)
 	in = fopen(options.conf_file, "r");
 	if (!in) {
 		goto lowMemory;
-	}
-	if (seTotal > 0) {
-		seInfo[i].allowRulesTotal = 0;
-		seInfo[i].denyRulesTotal = 0;
 	}
 	while (1) {
 		char *bindAddress;
@@ -618,10 +615,6 @@ void readConfiguration(void)
 			}
 			s->toPort = connectPort;
 			i++;
-			if (i < seTotal) {
-				seInfo[i].allowRulesTotal = 0;
-				seInfo[i].denyRulesTotal = 0;
-			}
 		}
 	}
 	fclose(in);
@@ -680,6 +673,7 @@ void initArrays(void)
 	}
 	for (j = 0; j < coTotal; j++) {
 		ConnectionInfo *c = &coInfo[j];
+		memset(c, 0, sizeof(*c));
 		c->coClosed = 1;
 		c->input = (char *) malloc(sizeof(char) * bufferSpace);
 		c->output = (char *) malloc(sizeof(char) * bufferSpace);
@@ -1005,7 +999,8 @@ void handleAccept(int i)
 		{
 			goto shortage;
 		}
-		for (j = o; (j < coTotal); j++) {
+		for (j = o; j < coTotal; j++) {
+			memset(&coInfo[j], 0, sizeof(coInfo[j]));
 			coInfo[j].coClosed = 1;
 			coInfo[j].input = (char *)
 				malloc(sizeof(char) * bufferSpace);
