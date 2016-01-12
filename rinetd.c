@@ -147,13 +147,6 @@ char *pidLogFileName = 0;
 int logFormatCommon = 0;
 FILE *logFile = 0;
 
-/* If 'newsize' bytes can be allocated, *data is set to point
-	to them, the previous data is copied, and 1 is returned.
-	If 'size' bytes cannot be allocated, *data is UNCHANGED,
-	and 0 is returned. */
-
-static int safeRealloc(void **data, int oldsize, int newsize);
-
 /*
 	se: (se)rver sockets
 	re: (re)mote sockets
@@ -975,11 +968,15 @@ void handleAccept(int i)
 	if (cnx == NULL) {
 		o = coTotal;
 		coTotal *= 2;
-		if (!safeRealloc((void **)&coInfo, sizeof(ConnectionInfo) * o,
-			sizeof(ConnectionInfo) * coTotal))
-		{
+
+		ConnectionInfo *newCoInfo = malloc(sizeof(ConnectionInfo) * coTotal);
+		if (!newCoInfo) {
 			goto shortage;
 		}
+		memcpy(newCoInfo, coInfo, sizeof(ConnectionInfo) * o);
+		free(coInfo);
+		coInfo = newCoInfo;
+
 		for (int j = o; j < coTotal; ++j) {
 			memset(&coInfo[j], 0, sizeof(coInfo[j]));
 			coInfo[j].coClosed = 1;
@@ -1223,17 +1220,6 @@ RETSIGTYPE hup(int s)
 #endif
 }
 #endif /* WIN32 */
-
-static int safeRealloc(void **data, int oldsize, int newsize)
-{
-	void *newData = malloc(newsize + 1);
-	if (!newData) {
-		return 0;
-	}
-	memcpy(newData, *data, newsize < oldsize ? newsize : oldsize);
-	*data = newData;
-	return 1;
-}
 
 void RegisterPID(void)
 {
