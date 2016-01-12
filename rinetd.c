@@ -296,12 +296,11 @@ void readConfiguration(void)
 	FILE *in;
 	char line[16384];
 	int lnum = 0;
-	int i;
 	int ai;
 	int di;
 	if (seInfo) {
 		/* Close existing server sockets. */
-		for (i = 0; i < seTotal; i++) {
+		for (int i = 0; i < seTotal; ++i) {
 			ServerInfo *srv = &seInfo[i];
 			if (srv->fd != -1) {
 				closesocket(srv->fd);
@@ -315,7 +314,7 @@ void readConfiguration(void)
 	seTotal = 0;
 	if (allowRules) {
 		/* Forget existing allow rules. */
-		for (i = 0; (i < allowRulesTotal); i++) {
+		for (int i = 0; i < allowRulesTotal; ++i) {
 			free(allowRules[i]);
 		}
 		/* Free memory associated with previous set. */
@@ -325,7 +324,7 @@ void readConfiguration(void)
 	allowRulesTotal = 0;
 	if (denyRules) {
 		/* Forget existing deny rules. */
-		for (i = 0; (i < denyRulesTotal); i++) {
+		for (int i = 0; i < denyRulesTotal; ++i) {
 			free(denyRules[i]);
 		}
 		/* Free memory associated with previous set. */
@@ -374,7 +373,7 @@ void readConfiguration(void)
 	if (!seInfo) {
 		goto lowMemory;
 	}
-	for (i = 0; i < seTotal; ++i) {
+	for (int i = 0; i < seTotal; ++i) {
 		memset(&seInfo[i], 0, sizeof(seInfo[i]));
 		seInfo[i].fd = INVALID_SOCKET;
 	}
@@ -389,7 +388,6 @@ void readConfiguration(void)
 		goto lowMemory;
 	}
 	/* 2. Make a second pass to configure them. */
-	i = 0;
 	ai = 0;
 	di = 0;
 	lnum = 0;
@@ -397,7 +395,7 @@ void readConfiguration(void)
 	if (!in) {
 		goto lowMemory;
 	}
-	while (1) {
+	for (int i = 0; ; ) {
 		char *bindAddress;
 		unsigned short bindPort;
 		char *connectAddress;
@@ -407,7 +405,6 @@ void readConfiguration(void)
 		struct in_addr iaddr;
 		struct sockaddr_in saddr;
 		struct servent *service;
-		int j;
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
@@ -557,9 +554,9 @@ void readConfiguration(void)
 			saddr.sin_family = AF_INET;
 			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
 			saddr.sin_port = htons(bindPort);
-			j = 1;
+			int tmp = 1;
 			setsockopt(srv->fd, SOL_SOCKET, SO_REUSEADDR,
-				(const char *) &j, sizeof(j));
+				(const char *) &tmp, sizeof(tmp));
 			if (bind(srv->fd, (struct sockaddr *)
 				&saddr, sizeof(saddr)) == SOCKET_ERROR)
 			{
@@ -580,7 +577,7 @@ void readConfiguration(void)
 				srv->fd = INVALID_SOCKET;
 				continue;
 			}
-			ioctlsocket(srv->fd, FIONBIO, &j);
+			ioctlsocket(srv->fd, FIONBIO, &tmp);
 			if (!getAddress(connectAddress, &iaddr)) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "host %s could not be "
@@ -652,15 +649,14 @@ int getConfLine(FILE *in, char *line, int space, int *lnum)
 
 void initArrays(void)
 {
-	int j;
 	coTotal = 64;
 	coInfo = (ConnectionInfo *) malloc(sizeof(ConnectionInfo) * coTotal);
 	if (!coInfo) {
 		syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 		exit(1);
 	}
-	for (j = 0; j < coTotal; j++) {
-		ConnectionInfo *cnx = &coInfo[j];
+	for (int i = 0; i < coTotal; ++i) {
+		ConnectionInfo *cnx = &coInfo[i];
 		memset(cnx, 0, sizeof(*cnx));
 		cnx->coClosed = 1;
 		cnx->input = (char *) malloc(sizeof(char) * bufferSpace);
@@ -691,18 +687,17 @@ void openLocalFd(int se, ConnectionInfo *cnx);
 int getAddress(char *host, struct in_addr *iaddr);
 
 void selectPass(void) {
-	int i;
 	fd_set readfds, writefds;
 	FD_ZERO(&readfds);
 	FD_ZERO(&writefds);
 	/* Server sockets */
-	for (i = 0; (i < seTotal); i++) {
+	for (int i = 0; i < seTotal; ++i) {
 		if (seInfo[i].fd != INVALID_SOCKET) {
 			FD_SET(seInfo[i].fd, &readfds);
 		}
 	}
 	/* Connection sockets */
-	for (i = 0; (i < coTotal); i++) {
+	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
 		if (cnx->coClosed) {
 			continue;
@@ -735,14 +730,14 @@ void selectPass(void) {
 		}
 	}
 	select(maxfd + 1, &readfds, &writefds, 0, 0);
-	for (i = 0; (i < seTotal); i++) {
+	for (int i = 0; i < seTotal; ++i) {
 		if (seInfo[i].fd != -1) {
 			if (FD_ISSET(seInfo[i].fd, &readfds)) {
 				handleAccept(i);
 			}
 		}
 	}
-	for (i = 0; (i < coTotal); i++) {
+	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
 		if (cnx->coClosed) {
 			continue;
@@ -944,19 +939,14 @@ void handleAccept(int i)
 	ServerInfo *srv = &seInfo[i];
 	ConnectionInfo *cnx = NULL;
 	struct sockaddr addr;
-	struct sockaddr_in *sin;
 	struct in_addr address;
-	char const *addressText;
-	int j;
 #if HAVE_SOCKLEN_T
 	socklen_t addrlen;
 #else
 	int addrlen;
 #endif
-	int o;
-	SOCKET nfd;
 	addrlen = sizeof(addr);
-	nfd = accept(srv->fd, &addr, &addrlen);
+	SOCKET nfd = accept(srv->fd, &addr, &addrlen);
 	if (nfd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "accept(%d): %m", srv->fd);
 		logEvent(NULL, i, logAcceptFailed);
@@ -967,18 +957,21 @@ void handleAccept(int i)
 		maxfd = nfd;
 	}
 #endif /* WIN32 */
-	j = 1;
-	ioctlsocket(nfd, FIONBIO, &j);
-	j = 0;
+
+	int tmp = 1;
+	ioctlsocket(nfd, FIONBIO, &tmp);
 #ifndef WIN32
-	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &j, sizeof(j));
+	tmp = 0;
+	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
-	for (j = 0; (j < coTotal); j++) {
+
+	for (int j = 0; j < coTotal; ++j) {
 		if (coInfo[j].coClosed) {
 			cnx = &coInfo[j];
 			break;
 		}
 	}
+	int o;
 	if (cnx == NULL) {
 		o = coTotal;
 		coTotal *= 2;
@@ -987,14 +980,13 @@ void handleAccept(int i)
 		{
 			goto shortage;
 		}
-		for (j = o; j < coTotal; j++) {
+		for (int j = o; j < coTotal; ++j) {
 			memset(&coInfo[j], 0, sizeof(coInfo[j]));
 			coInfo[j].coClosed = 1;
 			coInfo[j].input = (char *)
 				malloc(sizeof(char) * bufferSpace);
 			if (!coInfo[j].input) {
-				int k;
-				for (k = o; (k < j); k++) {
+				for (int k = o; k < j; ++k) {
 					free(coInfo[k].input);
 					free(coInfo[k].output);
 				}
@@ -1003,9 +995,8 @@ void handleAccept(int i)
 			coInfo[j].output = (char *)
 				malloc(sizeof(char) * bufferSpace);
 			if (!coInfo[j].output) {
-				int k;
 				free(coInfo[j].input);
-				for (k = o; (k < j); k++) {
+				for (int k = o; k < j; ++k) {
 					free(coInfo[k].input);
 					free(coInfo[k].output);
 				}
@@ -1027,16 +1018,17 @@ void handleAccept(int i)
 	cnx->bytesOutput = 0;
 	cnx->coLog = 0;
 	cnx->server = i;
-	sin = (struct sockaddr_in *) &addr;
+	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
 	cnx->reAddresses.s_addr = address.s_addr = sin->sin_addr.s_addr;
-	addressText = inet_ntoa(address);
+	char const *addressText = inet_ntoa(address);
+
 	/* 1. Check global allow rules. If there are no
 		global allow rules, it's presumed OK at
 		this step. If there are any, and it doesn't
 		match at least one, kick it out. */
 	if (globalAllowRules) {
 		int good = 0;
-		for (j = 0; (j < globalAllowRules); j++) {
+		for (int j = 0; j < globalAllowRules; ++j) {
 			if (match(addressText, allowRules[j])) {
 				good = 1;
 				break;
@@ -1050,7 +1042,7 @@ void handleAccept(int i)
 	/* 2. Check global deny rules. If it matches
 		any of the global deny rules, kick it out. */
 	if (globalDenyRules) {
-		for (j = 0; (j < globalDenyRules); j++) {
+		for (int j = 0; j < globalDenyRules; ++j) {
 			if (match(addressText, denyRules[j])) {
 				refuse(cnx, logDenied);
 			}
@@ -1061,7 +1053,7 @@ void handleAccept(int i)
 		it must match at least one. */
 	if (srv->allowRulesTotal) {
 		int good = 0;
-		for (j = 0; (j < srv->allowRulesTotal); j++) {
+		for (int j = 0; j < srv->allowRulesTotal; ++j) {
 			if (match(addressText,
 				allowRules[srv->allowRules + j])) {
 				good = 1;
@@ -1076,7 +1068,7 @@ void handleAccept(int i)
 	/* 2. Check deny rules specific to this forwarding rule. If
 		it matches any of the deny rules, kick it out. */
 	if (srv->denyRulesTotal) {
-		for (j = 0; (j < srv->denyRulesTotal); j++) {
+		for (int j = 0; j < srv->denyRulesTotal; ++j) {
 			if (match(addressText,
 				denyRules[srv->denyRules + j])) {
 				refuse(cnx, logDenied);
@@ -1097,7 +1089,6 @@ shortage:
 
 void openLocalFd(int se, ConnectionInfo *cnx)
 {
-	int j;
 	struct sockaddr_in saddr;
 	cnx->loFd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (cnx->loFd == INVALID_SOCKET) {
@@ -1135,17 +1126,20 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 	saddr.sin_family = AF_INET;
 	memcpy(&saddr.sin_addr, &seInfo[se].localAddr, sizeof(struct in_addr));
 	saddr.sin_port = seInfo[se].localPort;
+
+	int tmp;
 #ifndef WIN32
 #ifdef __linux__
-	j = 0;
-	setsockopt(cnx->loFd, SOL_SOCKET, SO_LINGER, &j, sizeof(j));
+	tmp = 0;
+	setsockopt(cnx->loFd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #else
-	j = 1024;
-	setsockopt(cnx->loFd, SOL_SOCKET, SO_SNDBUF, &j, sizeof(j));
+	tmp = 1024;
+	setsockopt(cnx->loFd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
 #endif /* __linux__ */
 #endif /* WIN32 */
-	j = 1;
-	ioctlsocket(cnx->loFd, FIONBIO, &j);
+	tmp = 1;
+	ioctlsocket(cnx->loFd, FIONBIO, &tmp);
+
 	if (connect(cnx->loFd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == INVALID_SOCKET)
 	{
@@ -1177,8 +1171,7 @@ int getAddress(char *host, struct in_addr *iaddr)
 		p++;
 	}
 	if (ishost) {
-		struct hostent *h;
-		h = gethostbyname(host);
+		struct hostent *h = gethostbyname(host);
 		if (!h) {
 			const char *msg = "(unknown DNS error)";
 			switch(h_errno)
@@ -1237,11 +1230,7 @@ static int safeRealloc(void **data, int oldsize, int newsize)
 	if (!newData) {
 		return 0;
 	}
-	if (newsize < oldsize) {
-		memcpy(newData, *data, newsize);
-	} else {
-		memcpy(newData, *data, oldsize);
-	}
+	memcpy(newData, *data, newsize < oldsize ? newsize : oldsize);
 	*data = newData;
 	return 1;
 }
@@ -1264,7 +1253,7 @@ void RegisterPID(void)
 	} else {
 		fprintf(pid_file, "%d\n", getpid());
 		/* errors aren't fatal */
-		if(fclose(pid_file))
+		if (fclose(pid_file))
 			goto error;
 	}
 	return;
@@ -1281,37 +1270,31 @@ struct tm *get_gmtoff(int *tz);
 void logEvent(ConnectionInfo const *cnx, int i, int result)
 {
 	ServerInfo const *srv = &seInfo[i];
-	struct in_addr const *reAddress;
-	char const *addressText;
-	int bytesOutput;
-	int bytesInput;
 	/* Bit of borrowing from Apache logging module here,
 		thanks folks */
 	int timz;
-	struct tm *t;
 	char tstr[1024];
-	char sign;
-	t = get_gmtoff(&timz);
-	sign = (timz < 0 ? '-' : '+');
+	struct tm *t = get_gmtoff(&timz);
+	char sign = (timz < 0 ? '-' : '+');
 	if (timz < 0) {
 		timz = -timz;
 	}
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 
+	struct in_addr const *reAddress = &nullAddress;
+	int bytesOutput = 0;
+	int bytesInput = 0;
 	if (cnx != NULL) {
 		reAddress = &cnx->reAddresses;
 		bytesOutput = cnx->bytesOutput;
 		bytesInput = cnx->bytesInput;
-	} else {
-		reAddress = &nullAddress;
-		bytesOutput = 0;
-		bytesInput = 0;
 	}
-	addressText = inet_ntoa(*reAddress);
-	if(result==logNotAllowed || result==logDenied)
-		syslog(LOG_INFO,"%s %s"
-			,addressText
-			,logMessages[result]);
+	char const *addressText = inet_ntoa(*reAddress);
+
+	if (result==logNotAllowed || result==logDenied)
+		syslog(LOG_INFO, "%s %s"
+			, addressText
+			, logMessages[result]);
 	if (logFile) {
 		if (logFormatCommon) {
 			/* Fake a common log format log file in a way that
@@ -1360,9 +1343,7 @@ int readArgs (int argc,
 	char **argv,
 	RinetdOptions *options)
 {
-	int c;
-
-	while (1) {
+	for (;;) {
 		int option_index = 0;
 		static struct option long_options[] = {
 			{"conf-file",  1, 0, 'c'},
@@ -1371,7 +1352,7 @@ int readArgs (int argc,
 			{"version",    0, 0, 'v'},
 			{0, 0, 0, 0}
 		};
-		c = getopt_long (argc, argv, "c:fshv",
+		int c = getopt_long (argc, argv, "c:fshv",
 			long_options, &option_index);
 		if (c == -1) {
 			break;
