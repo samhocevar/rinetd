@@ -1211,6 +1211,7 @@ RETSIGTYPE plumber(int s)
 
 RETSIGTYPE hup(int s)
 {
+	(void)s;
 	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
 	/* Learn the new rules */
 	readConfiguration();
@@ -1220,6 +1221,16 @@ RETSIGTYPE hup(int s)
 #endif
 }
 #endif /* WIN32 */
+
+RETSIGTYPE term(int s)
+{
+	(void)s;
+	/* Obey the request, but first flush the log */
+	if (logFile) {
+		fclose(logFile);
+	}
+	exit(0);
+}
 
 void RegisterPID(void)
 {
@@ -1419,14 +1430,5 @@ void refuse(ConnectionInfo *cnx, int logCode)
 	cnx->loClosed = 1;
 	cnx->coClosed = 1;
 	logEvent(cnx, cnx->server, logCode);
-}
-
-RETSIGTYPE term(int s)
-{
-	/* Obey the request, but first flush the log */
-	if (logFile) {
-		fclose(logFile);
-	}
-	exit(0);
 }
 
