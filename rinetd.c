@@ -652,12 +652,12 @@ void initArrays(void)
 		ConnectionInfo *cnx = &coInfo[i];
 		memset(cnx, 0, sizeof(*cnx));
 		cnx->coClosed = 1;
-		cnx->input = (char *) malloc(sizeof(char) * bufferSpace);
-		cnx->output = (char *) malloc(sizeof(char) * bufferSpace);
-		if (!cnx->input || !cnx->output) {
+		cnx->input = (char *) malloc(sizeof(char) * 2 * bufferSpace);
+		if (!cnx->input) {
 			syslog(LOG_ERR, "not enough memory to start rinetd.\n");
 			exit(1);
 		}
+		cnx->output = cnx->input + bufferSpace;
 	}
 }
 
@@ -969,7 +969,8 @@ void handleAccept(int i)
 		o = coTotal;
 		coTotal *= 2;
 
-		ConnectionInfo *newCoInfo = malloc(sizeof(ConnectionInfo) * coTotal);
+		ConnectionInfo *newCoInfo = (ConnectionInfo *)
+			malloc(sizeof(ConnectionInfo) * coTotal);
 		if (!newCoInfo) {
 			goto shortage;
 		}
@@ -981,24 +982,14 @@ void handleAccept(int i)
 			memset(&coInfo[j], 0, sizeof(coInfo[j]));
 			coInfo[j].coClosed = 1;
 			coInfo[j].input = (char *)
-				malloc(sizeof(char) * bufferSpace);
+				malloc(sizeof(char) * 2 * bufferSpace);
 			if (!coInfo[j].input) {
 				for (int k = o; k < j; ++k) {
 					free(coInfo[k].input);
-					free(coInfo[k].output);
 				}
 				goto shortage;
 			}
-			coInfo[j].output = (char *)
-				malloc(sizeof(char) * bufferSpace);
-			if (!coInfo[j].output) {
-				free(coInfo[j].input);
-				for (int k = o; k < j; ++k) {
-					free(coInfo[k].input);
-					free(coInfo[k].output);
-				}
-				goto shortage;
-			}
+			coInfo[j].output = coInfo[j].input + bufferSpace;
 		}
 		cnx = &coInfo[o];
 	}
