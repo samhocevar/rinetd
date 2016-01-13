@@ -156,7 +156,8 @@ FILE *logFile = 0;
 
 static int const bufferSpace = 1024;
 
-void readConfiguration();
+static void selectPass(void);
+static void readConfiguration(void);
 
 /* Signal handlers */
 RETSIGTYPE plumber(int s);
@@ -165,8 +166,6 @@ RETSIGTYPE term(int s);
 
 void allocConnections(int count);
 void RegisterPID(void);
-
-void selectLoop(void);
 
 void logEvent(ConnectionInfo const *cnx, int i, int result);
 
@@ -268,7 +267,9 @@ int main(int argc, char *argv[])
 			readConfiguration();
 			RegisterPID();
 			syslog(LOG_INFO, "Starting redirections...");
-			selectLoop();
+			while (1) {
+				selectPass();
+			}
 #ifndef WIN32
 #ifndef DEBUG
 	} else {
@@ -283,7 +284,7 @@ int getConfLine(FILE *in, char *line, int space, int *lnum);
 
 int patternBad(char *pattern);
 
-void readConfiguration(void)
+static void readConfiguration(void)
 {
 	FILE *in;
 	char line[16384];
@@ -669,14 +670,6 @@ void allocConnections(int count)
 	coTotal += count;
 }
 
-void selectPass(void);
-
-void selectLoop(void) {
-	while (1) {
-		selectPass();
-	}
-}
-
 void handleRemoteWrite(ConnectionInfo *cnx);
 void handleRemoteRead(ConnectionInfo *cnx);
 void handleLocalWrite(ConnectionInfo *cnx);
@@ -687,14 +680,20 @@ void handleAccept(int i);
 void openLocalFd(int se, ConnectionInfo *cnx);
 int getAddress(char *host, struct in_addr *iaddr);
 
-void selectPass(void) {
-	fd_set readfds, writefds;
-	FD_ZERO(&readfds);
-	FD_ZERO(&writefds);
+static void selectPass(void) {
+
+	int const fdSetCount = maxfd / __FD_SETSIZE + 1;
+#	define FD_ZERO_EXT(ar) for (int i = 0; i < fdSetCount; ++i) { FD_ZERO(&(ar)[i]); }
+#	define FD_SET_EXT(fd, ar) FD_SET((fd) % __FD_SETSIZE, &(ar)[(fd) / __FD_SETSIZE])
+#	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % __FD_SETSIZE, &(ar)[(fd) / __FD_SETSIZE])
+
+	fd_set readfds[fdSetCount], writefds[fdSetCount];
+	FD_ZERO_EXT(readfds);
+	FD_ZERO_EXT(writefds);
 	/* Server sockets */
 	for (int i = 0; i < seTotal; ++i) {
 		if (seInfo[i].fd != INVALID_SOCKET) {
-			FD_SET(seInfo[i].fd, &readfds);
+			FD_SET_EXT(seInfo[i].fd, readfds);
 		}
 	}
 	/* Connection sockets */
@@ -705,35 +704,35 @@ void selectPass(void) {
 		}
 		if (cnx->coClosing) {
 			if (!cnx->reClosed) {
-				FD_SET(cnx->reFd, &writefds);
+				FD_SET_EXT(cnx->reFd, writefds);
 			}
 			if (!cnx->loClosed) {
-				FD_SET(cnx->loFd, &writefds);
+				FD_SET_EXT(cnx->loFd, writefds);
 			}
 		}
 		/* Get more input if we have room for it */
 		if ((!cnx->reClosed) && (cnx->inputRPos < bufferSpace)) {
-			FD_SET(cnx->reFd, &readfds);
+			FD_SET_EXT(cnx->reFd, readfds);
 		}
 		/* Send more output if we have any */
 		if ((!cnx->reClosed) && (cnx->outputWPos < cnx->outputRPos)) {
-			FD_SET(cnx->reFd, &writefds);
+			FD_SET_EXT(cnx->reFd, writefds);
 		}
 		/* Accept more output from the local
 			server if there's room */
 		if ((!cnx->loClosed) && (cnx->outputRPos < bufferSpace)) {
-			FD_SET(cnx->loFd, &readfds);
+			FD_SET_EXT(cnx->loFd, readfds);
 		}
 		/* Send more input to the local server
 			if we have any */
 		if ((!cnx->loClosed) && (cnx->inputWPos < cnx->inputRPos)) {
-			FD_SET(cnx->loFd, &writefds);
+			FD_SET_EXT(cnx->loFd, writefds);
 		}
 	}
-	select(maxfd + 1, &readfds, &writefds, 0, 0);
+	select(maxfd + 1, readfds, writefds, 0, 0);
 	for (int i = 0; i < seTotal; ++i) {
 		if (seInfo[i].fd != -1) {
-			if (FD_ISSET(seInfo[i].fd, &readfds)) {
+			if (FD_ISSET_EXT(seInfo[i].fd, readfds)) {
 				handleAccept(i);
 			}
 		}
@@ -744,22 +743,22 @@ void selectPass(void) {
 			continue;
 		}
 		if (!cnx->reClosed) {
-			if (FD_ISSET(cnx->reFd, &readfds)) {
+			if (FD_ISSET_EXT(cnx->reFd, readfds)) {
 				handleRemoteRead(cnx);
 			}
 		}
 		if (!cnx->reClosed) {
-			if (FD_ISSET(cnx->reFd, &writefds)) {
+			if (FD_ISSET_EXT(cnx->reFd, writefds)) {
 				handleRemoteWrite(cnx);
 			}
 		}
 		if (!cnx->loClosed) {
-			if (FD_ISSET(cnx->loFd, &readfds)) {
+			if (FD_ISSET_EXT(cnx->loFd, readfds)) {
 				handleLocalRead(cnx);
 			}
 		}
 		if (!cnx->loClosed) {
-			if (FD_ISSET(cnx->loFd, &writefds)) {
+			if (FD_ISSET_EXT(cnx->loFd, writefds)) {
 				handleLocalWrite(cnx);
 			}
 		}
