@@ -1,244 +1,234 @@
-<html>
+﻿<html>
 <head>
 <title>RINETD(8)</title>
+<style>
+body {
+  background-color: #fffff0;
+}
+h3 {
+  color: #ff8888;
+}
+blockquote,code {
+  font-family: consolas, monospace, fixed;
+  font-size: 0.9em;
+  font-weight: bold;
+  color: #555555;
+}
+</style>
 </head>
-<body bgcolor="#FFFFF0">
+<body>
 <!--
  Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
  This software is released for free use under the terms of
  the GNU General Public License, version 2 or higher.
 -->
 <table>
-<tr>
-<th width=33% align=left>RINETD(8)
-<th width=33% align=right>Unix System Manager's Manual
-<th width=33% align=right>RINETD(8)
-</tr>
+ <tr>
+  <th width=33% align=left>RINETD(8)
+  <th width=33% align=right>Unix System Manager's Manual
+  <th width=33% align=right>RINETD(8)
+ </tr>
 </table>
-<p>
-<font color="#FF8888" size="4">NAME</font>
-<p>
-rinetd -- internet ``redirection server''
-<p>
-<font color="#FF8888" size="4">SYNOPSIS</font>
-<p>
-<code>/usr/sbin/rinetd</code>
-<p>
-<font color="#FF8888" size="4">VERSION</font>
-<p>
-Version 0.62, 04/13/2003. Version 0.62 corrects a potential
-buffer overflow when reallocating memory to accommodate more
-connections. Upgrading is strongly recommended.
-<p>
-<font color="#FF8888" size="4">WHERE TO GET</font>
-<p>
-<strong>For Linux:</strong>
+
+<h3>NAME</h3>
+
+<p> rinetd -- internet “redirection server”</p>
+
+<h3>SYNOPSIS</h3>
+
+<p> <code>/usr/sbin/rinetd</code></p>
+
+<h3>VERSION</h3>
+
+<p> Version 0.62, 04/13/2003. Version 0.62 corrects a potential buffer overflow
+when reallocating memory to accommodate more connections. Upgrading is strongly
+recommended. </p>
+
+<h3>WHERE TO GET</h3>
+
+<p> <strong>For Linux:</strong>
 <a href="ftp://ftp.boutell.com/pub/boutell/rinetd/rinetd.tar.gz">By
 anonymous FTP from ftp.boutell.com</a> in the subdirectory
 <code>boutell/rinetd</code> as the file <code>rinetd.tar.gz</code>.
-<p>
-<strong>For Windows 95/98/NT:</strong>
+</p>
+
+<p> <strong>For Windows 95/98/NT:</strong>
 <a href="ftp://ftp.boutell.com/pub/boutell/rinetd/rinetd.zip">By
 anonymous FTP from ftp.boutell.com</a> in the subdirectory
 <code>boutell/rinetd</code> as the file <code>rinetd.zip</code>.
-<p>
-<font color="#FF8888" size="4">DESCRIPTION</font>
-<p>
-Redirects TCP connections from one IP address and port to another. rinetd
-is a single-process server which handles any number of connections to
-the address/port pairs specified in the file <code>/etc/rinetd.conf</code>. 
-Since rinetd runs as a single process using nonblocking I/O, it is
-able to redirect a large number of connections without a severe
-impact on the machine. This makes it practical to run TCP services
-on machines inside an IP masquerading firewall. rinetd <strong>does not
-redirect FTP,</strong> because FTP requires more than one socket.
-<p>
-rinetd is typically launched at boot time, using the following syntax:
-<p>
-<code>/usr/sbin/rinetd</code>
-<p>
-The configuration file is found in the file 
-<code>/etc/rinetd.conf</code>, unless
-another file is specified using the <code>-c</code> command line option. 
-<p>
-<font color="#FF8888" size="4">FORWARDING RULES</font>
-<p>
-Most entries in the configuration file are forwarding rules. The
-format of a forwarding rule is as follows:
-<pre>
-bindaddress bindport connectaddress connectport
-</pre>
-For example:
-<pre>
-206.125.69.81 80 10.1.1.2 80
-</pre>
-Would redirect all connections to port 80 of the "real" IP address
-206.125.69.81, which could be a virtual interface, through
-rinetd to port 80 of the address 10.1.1.2, which would typically 
-be a machine on the inside of a firewall which has no
-direct routing to the outside world.
-<p>
-Although responding on individual interfaces rather than on all
-interfaces is one of rinetd's primary features, sometimes it is 
-preferable to respond on all IP addresses that belong to the server.
-In this situation, the special IP address <code>0.0.0.0</code>
-can be used. For example:
-<pre>
-0.0.0.0 23 10.1.1.2 23
-</pre>
-Would redirect all connections to port 23, for all IP addresses
-assigned to the server. This is the default behavior for most
-other programs.
-<p>
-Service names can be specified instead of port numbers. On most systems,
-service names are defined in the file /etc/services.
-<p>
-Both IP addresses and hostnames are accepted for
-bindaddress and connectaddress.
-<p>
-<font color="#FF8888" size="4">ALLOW AND DENY RULES</font>
-<p>
-Configuration files can also contain allow and deny rules. 
-<p>
-Allow rules which appear before the first forwarding rule are
-applied globally: if at least one global allow rule exists,
-and the address of a new connection does not
-satisfy at least one of the global allow rules, that connection
-is immediately rejected, regardless of any other rules. 
-<p>
-Allow rules which appear after a specific forwarding rule apply 
-to that forwarding rule only. If at least one allow rule
-exists for a particular forwarding rule, and the address of a new
-connection does not satisfy at least one of the allow rules
-for that forwarding rule, that connection is immediately
-rejected, regardless of any other rules.
-<p>
-Deny rules which appear before the first forwarding rule are
-applied globally: if the address of a new connection satisfies
-any of the global allow rules, that connection
-is immediately rejected, regardless of any other rules. 
-<p>
-Deny rules which appear after a specific forwarding rule apply 
-to that forwarding rule only. If the address of a new
-connection satisfies any of the deny rules for that forwarding rule, 
-that connection is immediately rejected, regardless of any other rules.
-<p>
-The format of an allow rule is as follows:
-<pre>
-allow pattern
-</pre>
-Patterns can contain the following characters: 0, 1, 2, 3, 4, 5,
-6, 7, 8, 9, . (period), ?, and *. The ? wildcard matches any one
-character. The * wildcard matches any number of characters, including
-zero. 
-<p>
-For example:
-<p>
-<pre>
-allow 206.125.69.*
-</pre>
-This allow rule matches all IP addresses in the 206.125.69 class C domain.
-<p>
-Host names are NOT permitted in allow and deny rules. The performance
-cost of looking up IP addresses to find their corresponding names
-is prohibitive. Since rinetd is a single process server, all other
-connections would be forced to pause during the address lookup.
-<p>
-<font color="#FF8888" size="4">LOGGING</font>
-<p>
-rinetd is able to produce a log file in either of two formats:
-tab-delimited and web server-style "common log format."
-<p>
-By default, rinetd does not produce a log file. To activate logging, add 
-the following line to the configuration file:
-<pre>
-logfile log-file-location
-</pre>
-Example:
-<pre>
-logfile /var/log/rinetd.log
-</pre>
-By default, rinetd logs in a simple tab-delimited format containing
-the following information:
-<p>
-Date and time<br>
-Client address<br>
+</p>
 
-Listening host
-<br>
-Listening port
-<br>
-Forwarded-to host
-<br>
-Forwarded-to port
-<br>
-Bytes received from client
-<br>
-Bytes sent to client
-<br>
-Result message
-<p>
-To activate web server-style "common log format" logging,
-add the following line to the configuration file:
-<pre>
-logcommon
-</pre>
-<p>
-<font color="#FF8888" size="4">COMMAND LINE OPTIONS</font>
-<p>
-The -c command line option is used to specify an alternate
-configuration file.
-<p>
-The -f command line option is used to run rinetd in the
-foreground, without forking to the background.
-<p>
-The -h command line option produces a short help message.
-<p>
-The -v command line option displays the version number.
-<p>
-<font color="#FF8888" size="4">REINITIALIZING RINETD</font>
-<p>
-The kill -1 signal (SIGHUP) can be used to cause rinetd
-to reload its configuration file <strong>without</strong> interrupting existing
-connections. Under Linux(tm) the process id 
-is saved in the file <code>/var/run/rinetd.pid</code>
-to facilitate the kill -HUP. An alternate
-file name can be provided by using the <code>pidlogfile</code> 
-configuration file option.
-<p>
-<font color="#FF8888" size="4">BUGS</font>
-<p>
-The server redirected to is not able to identify the host the
-client really came from. This cannot be corrected; however,
-the log produced by rinetd provides a way to obtain this
-information. Under Unix, sockets would theoretically lose data when closed
-with <code>SO_LINGER</code> turned off, but in Linux this is not the case 
-(kernel source comments support this belief on my part). On non-Linux Unix
-platforms, alternate code which uses a different trick to work around 
-blocking <code>close()</code> is provided, but this code is untested.
-<p>
-The logging is inadequate. The duration of the connection should be logged.
-<p>
-<font color="#FF8888" size="4">LICENSE</font>
-<p>
-Copyright (c) 1997, 1998, 1999,
-<a href="http://www.boutell.com/boutell">Thomas Boutell</a> and 
+<h3>DESCRIPTION</h3>
+
+<p> Redirects TCP connections from one IP address and port to another. rinetd
+is a single-process server which handles any number of connections to the
+address/port pairs specified in the file <code>/etc/rinetd.conf</code>. Since
+rinetd runs as a single process using nonblocking I/O, it is able to redirect
+a large number of connections without a severe impact on the machine. This
+makes it practical to run TCP services on machines inside an IP masquerading
+firewall. rinetd <strong>does not redirect FTP</strong>, because FTP requires
+more than one socket. </p>
+
+<p> rinetd is typically launched at boot time, using the following syntax: </p>
+
+<blockquote>/usr/sbin/rinetd</blockquote>
+
+<p> The configuration file is found in the file <code>/etc/rinetd.conf</code>,
+unless another file is specified using the <code>-c</code> command line option.
+</p>
+
+<h3>FORWARDING RULES</h3>
+
+<p> Most entries in the configuration file are forwarding rules. The format of
+a forwarding rule is as follows:
+  <blockquote>bindaddress bindport connectaddress connectport</blockquote>
+For example:
+  <blockquote>206.125.69.81 80 10.1.1.2 80</blockquote>
+Would redirect all connections to port 80 of the “real” IP address
+206.125.69.81, which could be a virtual interface, through rinetd to port 80
+of the address 10.1.1.2, which would typically be a machine on the inside of a
+firewall which has no direct routing to the outside world. </p>
+
+<p> Although responding on individual interfaces rather than on all interfaces
+is one of rinetd's primary features, sometimes it is preferable to respond on
+all IP addresses that belong to the server. In this situation, the special IP
+address <code>0.0.0.0</code> can be used. For example:
+  <blockquote>0.0.0.0 23 10.1.1.2 23</blockquote>
+Would redirect all connections to port 23, for all IP addresses assigned to the
+server. This is the default behavior for most other programs. </p>
+
+<p> Service names can be specified instead of port numbers. On most systems,
+service names are defined in the file /etc/services. </p>
+
+<p> Both IP addresses and hostnames are accepted for bindaddress and
+connectaddress. </p>
+
+<h3>ALLOW AND DENY RULES</h3>
+
+<p> Configuration files can also contain allow and deny rules. </p>
+
+<p> Allow rules which appear before the first forwarding rule are applied
+globally: if at least one global allow rule exists, and the address of a new
+connection does not satisfy at least one of the global allow rules, that
+connection is immediately rejected, regardless of any other rules. </p>
+
+<p> Allow rules which appear after a specific forwarding rule apply to that
+forwarding rule only. If at least one allow rule exists for a particular
+forwarding rule, and the address of a new connection does not satisfy at least
+one of the allow rules for that forwarding rule, that connection is immediately
+rejected, regardless of any other rules. </p>
+
+<p> Deny rules which appear before the first forwarding rule are applied
+globally: if the address of a new connection satisfies any of the global allow
+rules, that connection is immediately rejected, regardless of any other rules.
+</p>
+
+<p> Deny rules which appear after a specific forwarding rule apply to that
+forwarding rule only. If the address of a new connection satisfies any of the
+deny rules for that forwarding rule, that connection is immediately rejected,
+regardless of any other rules. </p>
+
+<p> The format of an allow rule is as follows:
+  <blockquote>allow pattern</blockquote>
+Patterns can contain the following characters: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, .
+(period), ?, and *. The ? wildcard matches any one character. The * wildcard
+matches any number of characters, including zero. </p>
+
+<p> For example: </p>
+
+<p> <blockquote>allow 206.125.69.*</blockquote>
+This allow rule matches all IP addresses in the 206.125.69 class C domain. </p>
+
+<p> Host names are NOT permitted in allow and deny rules. The performance cost
+of looking up IP addresses to find their corresponding names is prohibitive.
+Since rinetd is a single process server, all other connections would be forced
+to pause during the address lookup. </p>
+
+<h3>LOGGING</h3>
+
+<p> rinetd is able to produce a log file in either of two formats:
+tab-delimited and web server-style “common log format.” </p>
+
+<p> By default, rinetd does not produce a log file. To activate logging, add
+the following line to the configuration file:
+  <blockquote>logfile log-file-location</blockquote>
+Example:
+  <blockquote>logfile /var/log/rinetd.log</blockquote>
+By default, rinetd logs in a simple tab-delimited format containing the
+following information: </p>
+
+<ul>
+ <li> Date and time </li>
+ <li> Client address<br />
+ <li> Listening host </li>
+ <li> Listening port </li>
+ <li> Forwarded-to host </li>
+ <li> Forwarded-to port </li>
+ <li> Bytes received from client </li>
+ <li> Bytes sent to client </li>
+ <li> Result message </li>
+</ul>
+
+<p> To activate web server-style “common log format” logging, add the following
+line to the configuration file:
+  <blockquote>logcommon</blockquote>
+</p>
+
+<h3>COMMAND LINE OPTIONS</h3>
+
+<p> The -c command line option is used to specify an alternate configuration
+file. </p>
+
+<p> The -f command line option is used to run rinetd in the foreground, without
+forking to the background. </p>
+
+<p> The -h command line option produces a short help message. </p>
+
+<p> The -v command line option displays the version number. </p>
+
+<h3>REINITIALIZING RINETD</h3>
+
+<p> The kill -1 signal (SIGHUP) can be used to cause rinetd to reload
+its configuration file <strong>without</strong> interrupting existing
+connections. Under Linux(tm) the process id is saved in the file
+<code>/var/run/rinetd.pid</code> to facilitate the kill -HUP. An alternate file
+name can be provided by using the <code>pidlogfile</code> configuration file
+option. </p>
+
+<h3>BUGS</h3>
+
+<p> The server redirected to is not able to identify the host the client
+really came from. This cannot be corrected; however, the log produced by
+rinetd provides a way to obtain this information. Under Unix, sockets would
+theoretically lose data when closed with <code>SO_LINGER</code> turned off, but
+in Linux this is not the case (kernel source comments support this belief on
+my part). On non-Linux Unix platforms, alternate code which uses a different
+trick to work around blocking <code>close()</code> is provided, but this code
+is untested. </p>
+
+<p> The logging is inadequate. The duration of the connection should be logged.
+</p>
+
+<h3>LICENSE</h3>
+
+<p> Copyright (c) 1997, 1998, 1999,
+<a href="http://www.boutell.com/boutell">Thomas Boutell</a> and
 <a href="http://www.boutell.com/">Boutell.Com, Inc.</a>
 This software is released for free use under the terms of
 the GNU General Public License, version 2 or higher.
-<p>
-<font color="#FF8888" size="4">CONTACT INFORMATION</font>
-<p>
-See <a href="http://www.boutell.com/rinetd">the rinetd web page</a> 
-for the latest release.
-Thomas Boutell can be reached by email: 
-<a href="mailto:boutell@boutell.com">boutell@boutell.com</a>
-<p>
-<font color="#FF8888" size="4">THANKS</font>
-<p>
-Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, 
-Joel S. Noble, the Apache Group, and many others who have contributed 
-advice, encouragement and/or source code to this and other open 
-software projects.
+</p>
+
+<h3>CONTACT INFORMATION</h3>
+
+<p> See <a href="http://www.boutell.com/rinetd">the rinetd web page</a>
+for the latest release. Thomas Boutell can be reached by email: <a
+href="mailto:boutell@boutell.com">boutell@boutell.com</a> </p>
+
+<h3>THANKS</h3>
+
+<p> Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, Joel
+S. Noble, the Apache Group, and many others who have contributed advice,
+encouragement and/or source code to this and other open software projects. </p>
+
 </body>
 </html>
