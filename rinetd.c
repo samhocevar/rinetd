@@ -111,6 +111,7 @@ struct _server_info
 };
 
 ServerInfo *seInfo = 0;
+int seTotal = 0;
 
 int globalAllowRules = 0;
 int globalDenyRules = 0;
@@ -132,13 +133,12 @@ struct _connection_info
 	char *input, *output;
 };
 
-ConnectionInfo *coInfo = 0;
+ConnectionInfo *coInfo = NULL;
+int coTotal = 0;
 
 char **allowRules = 0;
 char **denyRules = 0;
 int *denyRulesFor = 0;
-int seTotal = 0;
-int coTotal = 0;
 int allowRulesTotal = 0;
 int denyRulesTotal = 0;
 int maxfd = 0;
@@ -163,7 +163,7 @@ RETSIGTYPE plumber(int s);
 RETSIGTYPE hup(int s);
 RETSIGTYPE term(int s);
 
-void initArrays(void);
+void allocConnections(int count);
 void RegisterPID(void);
 
 void selectLoop(void);
@@ -265,7 +265,6 @@ int main(int argc, char *argv[])
 #endif
 #endif /* WIN32 */
 			signal(SIGTERM, term);
-			initArrays();
 			readConfiguration();
 			RegisterPID();
 			syslog(LOG_INFO, "Starting redirections...");
@@ -640,25 +639,34 @@ int getConfLine(FILE *in, char *line, int space, int *lnum)
 	}
 }
 
-void initArrays(void)
+void allocConnections(int count)
 {
-	coTotal = 64;
-	coInfo = (ConnectionInfo *) malloc(sizeof(ConnectionInfo) * coTotal);
-	if (!coInfo) {
-		syslog(LOG_ERR, "not enough memory to start rinetd.\n");
-		exit(1);
+	ConnectionInfo * newCoInfo = (ConnectionInfo *)
+		malloc(sizeof(ConnectionInfo) * (coTotal + count));
+	if (!newCoInfo) {
+		return;
 	}
-	for (int i = 0; i < coTotal; ++i) {
-		ConnectionInfo *cnx = &coInfo[i];
-		memset(cnx, 0, sizeof(*cnx));
+
+	memcpy(newCoInfo, coInfo, sizeof(ConnectionInfo) * coTotal);
+	memset(newCoInfo + coTotal, 0, sizeof(ConnectionInfo) * count);
+
+	for (int i = coTotal; i < coTotal + count; ++i) {
+		ConnectionInfo *cnx = &newCoInfo[i];
 		cnx->coClosed = 1;
 		cnx->input = (char *) malloc(sizeof(char) * 2 * bufferSpace);
 		if (!cnx->input) {
-			syslog(LOG_ERR, "not enough memory to start rinetd.\n");
-			exit(1);
+			while (i-- >= coTotal) {
+				free(newCoInfo[i].input);
+			}
+			free(newCoInfo);
+			return;
 		}
 		cnx->output = cnx->input + bufferSpace;
 	}
+
+	free(coInfo);
+	coInfo = newCoInfo;
+	coTotal += count;
 }
 
 void selectPass(void);
@@ -958,41 +966,27 @@ void handleAccept(int i)
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
 
+	/* Find an existing closed connection to reuse */
 	for (int j = 0; j < coTotal; ++j) {
 		if (coInfo[j].coClosed) {
 			cnx = &coInfo[j];
 			break;
 		}
 	}
-	int o;
+
+	/* Allocate new connections and pick the first one */
 	if (cnx == NULL) {
-		o = coTotal;
-		coTotal *= 2;
-
-		ConnectionInfo *newCoInfo = (ConnectionInfo *)
-			malloc(sizeof(ConnectionInfo) * coTotal);
-		if (!newCoInfo) {
-			goto shortage;
+		int oldTotal = coTotal;
+		allocConnections(8 + coTotal / 3);
+		if (coTotal == oldTotal) {
+			syslog(LOG_ERR, "not enough memory to add slots. "
+				"Currently %d slots.\n", coTotal);
+			/* Go back to the previous total number of slots */
+			return;
 		}
-		memcpy(newCoInfo, coInfo, sizeof(ConnectionInfo) * o);
-		free(coInfo);
-		coInfo = newCoInfo;
-
-		for (int j = o; j < coTotal; ++j) {
-			memset(&coInfo[j], 0, sizeof(coInfo[j]));
-			coInfo[j].coClosed = 1;
-			coInfo[j].input = (char *)
-				malloc(sizeof(char) * 2 * bufferSpace);
-			if (!coInfo[j].input) {
-				for (int k = o; k < j; ++k) {
-					free(coInfo[k].input);
-				}
-				goto shortage;
-			}
-			coInfo[j].output = coInfo[j].input + bufferSpace;
-		}
-		cnx = &coInfo[o];
+		cnx = &coInfo[oldTotal];
 	}
+
 	cnx->inputRPos = 0;
 	cnx->inputWPos = 0;
 	cnx->outputRPos = 0;
@@ -1067,12 +1061,6 @@ void handleAccept(int i)
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	openLocalFd(i, cnx);
-	return;
-shortage:
-	syslog(LOG_ERR, "not enough memory to add slots. "
-		"Currently %d slots.\n", o);
-	/* Go back to the previous total number of slots */
-	coTotal = o;
 }
 
 void openLocalFd(int se, ConnectionInfo *cnx)
