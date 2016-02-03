@@ -948,6 +948,7 @@ void handleAccept(int i)
 	addrlen = sizeof(addr);
 	SOCKET nfd = accept(srv->fd, &addr, &addrlen);
 	if (nfd == INVALID_SOCKET) {
+		srv->fd = INVALID_SOCKET;
 		syslog(LOG_ERR, "accept(%d): %m", srv->fd);
 		logEvent(NULL, i, logAcceptFailed);
 		return;
