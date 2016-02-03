@@ -383,7 +383,8 @@ static void readConfiguration(void)
 	if (!in) {
 		goto lowMemory;
 	}
-	for (int i = 0, lnum = 0, ai = 0, di = 0; ; ) {
+	int seActualTotal = 0;
+	for (int lnum = 0, ai = 0, di = 0; ; ) {
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
@@ -414,11 +415,11 @@ static void readConfiguration(void)
 			if (!allowRules[ai]) {
 				goto lowMemory;
 			}
-			if (i > 0) {
-				if (seInfo[i - 1].allowRulesTotal == 0) {
-					seInfo[i - 1].allowRules = ai;
+			if (seActualTotal > 0) {
+				if (seInfo[seActualTotal - 1].allowRulesTotal == 0) {
+					seInfo[seActualTotal - 1].allowRules = ai;
 				}
-				seInfo[i - 1].allowRulesTotal++;
+				seInfo[seActualTotal - 1].allowRulesTotal++;
 			} else {
 				globalAllowRules++;
 			}
@@ -434,11 +435,11 @@ static void readConfiguration(void)
 			if (!denyRules[di]) {
 				goto lowMemory;
 			}
-			if (i > 0) {
-				if (seInfo[i - 1].denyRulesTotal == 0) {
-					seInfo[i - 1].denyRules = di;
+			if (seActualTotal > 0) {
+				if (seInfo[seActualTotal - 1].denyRulesTotal == 0) {
+					seInfo[seActualTotal - 1].denyRules = di;
 				}
-				seInfo[i - 1].denyRulesTotal++;
+				seInfo[seActualTotal - 1].denyRulesTotal++;
 			} else {
 				globalDenyRules++;
 			}
@@ -468,8 +469,13 @@ static void readConfiguration(void)
 		} else if (!strcmp(bindAddress, "logcommon")) {
 			logFormatCommon = 1;
 		} else {
+			if (seActualTotal >= seTotal) {
+				syslog(LOG_ERR, "unexpected extra rule "
+					"found on file %s, line %d.\n", options.conf_file, lnum);
+				continue;
+			}
 			/* A regular forwarding rule. */
-			ServerInfo *srv = &seInfo[i];
+			ServerInfo *srv = &seInfo[seActualTotal];
 			char *bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
 				syslog(LOG_ERR, "no bind port "
@@ -572,10 +578,12 @@ static void readConfiguration(void)
 				goto lowMemory;
 			}
 			srv->toPort = connectPort;
-			i++;
+			++seActualTotal;
 		}
 	}
 	fclose(in);
+	/* Maybe we found fewer forward rules than expected */
+	seTotal = seActualTotal;
 	/* Open the log file */
 	if (logFile) {
 		fclose(logFile);
