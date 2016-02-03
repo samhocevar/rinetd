@@ -288,9 +288,6 @@ static void readConfiguration(void)
 {
 	FILE *in;
 	char line[16384];
-	int lnum = 0;
-	int ai;
-	int di;
 	if (seInfo) {
 		/* Close existing server sockets. */
 		for (int i = 0; i < seTotal; ++i) {
@@ -342,7 +339,8 @@ static void readConfiguration(void)
 	}
 	while (1) {
 		char *t = 0;
-		if (!getConfLine(in, line, sizeof(line), &lnum)) {
+		int dummy;
+		if (!getConfLine(in, line, sizeof(line), &dummy)) {
 			break;
 		}
 		t = strtok(line, " \t\r\n");
@@ -381,27 +379,15 @@ static void readConfiguration(void)
 		goto lowMemory;
 	}
 	/* 2. Make a second pass to configure them. */
-	ai = 0;
-	di = 0;
-	lnum = 0;
 	in = fopen(options.conf_file, "r");
 	if (!in) {
 		goto lowMemory;
 	}
-	for (int i = 0; ; ) {
-		char *bindAddress;
-		unsigned int bindPort;
-		char *connectAddress;
-		char *bindPortS;
-		char *connectPortS;
-		unsigned int connectPort;
-		struct in_addr iaddr;
-		struct sockaddr_in saddr;
-		struct servent *service;
+	for (int i = 0, lnum = 0, ai = 0, di = 0; ; ) {
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
-		bindAddress = strtok(line, " \t\r\n");
+		char *bindAddress = strtok(line, " \t\r\n");
 		if (!bindAddress) {
 			syslog(LOG_ERR, "no bind address specified "
 				"on file %s, line %d.\n", options.conf_file, lnum);
@@ -484,47 +470,40 @@ static void readConfiguration(void)
 		} else {
 			/* A regular forwarding rule. */
 			ServerInfo *srv = &seInfo[i];
-			bindPortS = strtok(0, " \t\r\n");
+			char *bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
 				syslog(LOG_ERR, "no bind port "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			service = getservbyname(bindPortS, "tcp");
-			if (service) {
-				bindPort = ntohs(service->s_port);
-			} else {
-				bindPort = atoi(bindPortS);
-			}
+			struct servent *bindService = getservbyname(bindPortS, "tcp");
+			unsigned int bindPort = bindService ? ntohs(bindService->s_port) : atoi(bindPortS);
 			if (bindPort == 0 || bindPort >= 65536) {
 				syslog(LOG_ERR, "bind port missing "
 					"or out of range on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			connectAddress = strtok(0, " \t\r\n");
+			char *connectAddress = strtok(0, " \t\r\n");
 			if (!connectAddress) {
 				syslog(LOG_ERR, "no connect address "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			connectPortS = strtok(0, " \t\r\n");
+			char *connectPortS = strtok(0, " \t\r\n");
 			if (!connectPortS) {
 				syslog(LOG_ERR, "no connect port "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			service = getservbyname(connectPortS, "tcp");
-			if (service) {
-				connectPort = ntohs(service->s_port);
-			} else {
-				connectPort = atoi(connectPortS);
-			}
+			struct servent *connectService = getservbyname(connectPortS, "tcp");
+			unsigned int connectPort = connectService ? ntohs(connectService->s_port) : atoi(connectPortS);
 			if (connectPort == 0 || connectPort >= 65536) {
 				syslog(LOG_ERR, "bind port missing "
 					"or out of range on file %s,  %d.\n", options.conf_file, lnum);
 				continue;
 			}
 			/* Turn all of this stuff into reasonable addresses */
+			struct in_addr iaddr;
 			if (!getAddress(bindAddress, &iaddr)) {
 				fprintf(stderr, "rinetd: host %s could not be "
 					"resolved on line %d.\n",
@@ -544,6 +523,7 @@ static void readConfiguration(void)
 				maxfd = srv->fd;
 			}
 #endif
+			struct sockaddr_in saddr;
 			saddr.sin_family = AF_INET;
 			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
 			saddr.sin_port = htons(bindPort);
