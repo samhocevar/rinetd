@@ -12,6 +12,6 @@ rinetd_SOURCES = rinetd.c match.c match.h
 
 # _POSIX_C_SOURCE is for SA_RESTART and others
 # _XOPEN_SOURCE is for struct sigaction
-# _DEFAULT_SOURCE is for h_errno and gethostbyname-related macros
-rinetd_CFLAGS = -std=c99 -D_XOPEN_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wwrite-strings -I.
+# _GNU_SOURCE is for h_errno and gethostbyname-related macros
+rinetd_CFLAGS = -std=c99 -D_XOPEN_SOURCE -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wwrite-strings -I.
 
