@@ -453,7 +453,7 @@ static void readConfiguration(void)
 			}
 			/* Turn all of this stuff into reasonable addresses */
 			struct in_addr iaddr;
-			if (!getAddress(bindAddress, &iaddr)) {
+			if (getAddress(bindAddress, &iaddr) < 0) {
 				fprintf(stderr, "rinetd: host %s could not be "
 					"resolved on line %d.\n",
 					bindAddress, lnum);
@@ -497,7 +497,7 @@ static void readConfiguration(void)
 				continue;
 			}
 			ioctlsocket(fd, FIONBIO, &tmp);
-			if (!getAddress(connectAddress, &iaddr)) {
+			if (getAddress(connectAddress, &iaddr) < 0) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "host %s could not be "
 					"resolved on file %s, line %d.\n",
@@ -1049,14 +1049,18 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 	}
 	if (is_ipaddr) {
 		iaddr->s_addr = inet_addr(host);
-		return 1;
+		return 0;
 	}
 
 	/* Otherwise, use gethostbyname() */
 	struct hostent *h = gethostbyname(host);
 	if (h) {
+#ifdef h_addr
 		memcpy(&iaddr->s_addr, h->h_addr, 4);
-		return 1;
+#else
+		memcpy(&iaddr->s_addr, h->h_addr_list[0], 4);
+#endif
+		return 0;
 	}
 
 	char const *msg = "(unknown DNS error)";
@@ -1065,7 +1069,11 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 	case HOST_NOT_FOUND:
 		msg = "The specified host is unknown.";
 		break;
+#ifdef NO_DATA
+	case NO_DATA:
+#else
 	case NO_ADDRESS:
+#endif
 		msg = "The requested name is valid but does not have an IP address.";
 		break;
 	case NO_RECOVERY:
@@ -1076,7 +1084,7 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 		break;
 	}
 	syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
-	return 0;
+	return -1;
 }
 
 #ifndef WIN32
