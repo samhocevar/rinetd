@@ -126,7 +126,6 @@ struct _connection_info
 	int bytesInput, bytesOutput;
 	int coClosed;
 	int coClosing;
-	int reClosed; // remote closed
 	int loClosed; // local closed
 	int coLog;
 	int server; // only useful for logEvent
@@ -639,7 +638,7 @@ static void selectPass(void) {
 			continue;
 		}
 		if (cnx->coClosing) {
-			if (!cnx->reClosed) {
+			if (cnx->reFd != INVALID_SOCKET) {
 				FD_SET_EXT(cnx->reFd, writefds);
 			}
 			if (!cnx->loClosed) {
@@ -647,11 +646,11 @@ static void selectPass(void) {
 			}
 		}
 		/* Get more input if we have room for it */
-		if ((!cnx->reClosed) && (cnx->inputRPos < bufferSpace)) {
+		if (cnx->reFd != INVALID_SOCKET && (cnx->inputRPos < bufferSpace)) {
 			FD_SET_EXT(cnx->reFd, readfds);
 		}
 		/* Send more output if we have any */
-		if ((!cnx->reClosed) && (cnx->outputWPos < cnx->outputRPos)) {
+		if (cnx->reFd != INVALID_SOCKET && (cnx->outputWPos < cnx->outputRPos)) {
 			FD_SET_EXT(cnx->reFd, writefds);
 		}
 		/* Accept more output from the local
@@ -678,12 +677,12 @@ static void selectPass(void) {
 		if (cnx->coClosed) {
 			continue;
 		}
-		if (!cnx->reClosed) {
+		if (cnx->reFd != INVALID_SOCKET) {
 			if (FD_ISSET_EXT(cnx->reFd, readfds)) {
 				handleRemoteRead(cnx);
 			}
 		}
-		if (!cnx->reClosed) {
+		if (cnx->reFd != INVALID_SOCKET) {
 			if (FD_ISSET_EXT(cnx->reFd, writefds)) {
 				handleRemoteWrite(cnx);
 			}
@@ -698,7 +697,7 @@ static void selectPass(void) {
 				handleLocalWrite(cnx);
 			}
 		}
-		if (cnx->loClosed && cnx->reClosed) {
+		if (cnx->loClosed && cnx->reFd == INVALID_SOCKET) {
 			cnx->coClosed = 1;
 		}
 	}
@@ -731,11 +730,11 @@ void handleRemoteRead(ConnectionInfo *cnx)
 void handleRemoteWrite(ConnectionInfo *cnx)
 {
 	if (cnx->coClosing && (cnx->outputWPos == cnx->outputRPos)) {
-		cnx->reClosed = 1;
 		cnx->coClosed = 1;
 		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, logDone | cnx->coLog);
 		closesocket(cnx->reFd);
+		cnx->reFd = INVALID_SOCKET;
 		return;
 	}
 	int got = send(cnx->reFd, cnx->output + cnx->outputWPos,
@@ -817,7 +816,7 @@ void handleCloseFromLocal(ConnectionInfo *cnx)
 	PERROR("close from local");
 	closesocket(cnx->loFd);
 	cnx->loClosed = 1;
-	if (!cnx->reClosed) {
+	if (cnx->reFd != INVALID_SOCKET) {
 #ifndef __linux__
 #ifndef WIN32
 		/* Now set up the remote end for a polite closing */
@@ -841,7 +840,7 @@ void handleCloseFromRemote(ConnectionInfo *cnx)
 		we're all done with that */
 	PERROR("close from remote");
 	closesocket(cnx->reFd);
-	cnx->reClosed = 1;
+	cnx->reFd = INVALID_SOCKET;
 	if (!cnx->loClosed) {
 #ifndef __linux__
 #ifndef WIN32
@@ -920,7 +919,6 @@ void handleAccept(int i)
 	cnx->outputWPos = 0;
 	cnx->coClosed = 0;
 	cnx->coClosing = 0;
-	cnx->reClosed = 0;
 	cnx->loClosed = 0;
 	cnx->reFd = nfd;
 	cnx->bytesInput = 0;
@@ -991,7 +989,7 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 	if (cnx->loFd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m");
 		closesocket(cnx->reFd);
-		cnx->reClosed = 1;
+		cnx->reFd = INVALID_SOCKET;
 		cnx->loClosed = 1;
 		cnx->coClosed = 1;
 		logEvent(cnx, cnx->server, logLocalSocketFailed);
@@ -1011,7 +1009,7 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 	if (bind(cnx->loFd, (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
 		closesocket(cnx->loFd);
 		closesocket(cnx->reFd);
-		cnx->reClosed = 1;
+		cnx->reFd = INVALID_SOCKET;
 		cnx->loClosed = 1;
 		cnx->coClosed = 1;
 		logEvent(cnx, cnx->server, logLocalBindFailed);
@@ -1046,7 +1044,7 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 			PERROR("rinetd: connect");
 			closesocket(cnx->loFd);
 			closesocket(cnx->reFd);
-			cnx->reClosed = 1;
+			cnx->reFd = INVALID_SOCKET;
 			cnx->loClosed = 1;
 			cnx->coClosed = 1;
 			logEvent(cnx, cnx->server, logLocalConnectFailed);
@@ -1320,7 +1318,7 @@ static int patternBad(char const *pattern)
 void refuse(ConnectionInfo *cnx, int logCode)
 {
 	closesocket(cnx->reFd);
-	cnx->reClosed = 1;
+	cnx->reFd = INVALID_SOCKET;
 	cnx->loClosed = 1;
 	cnx->coClosed = 1;
 	logEvent(cnx, cnx->server, logCode);
