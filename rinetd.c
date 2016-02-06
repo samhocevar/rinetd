@@ -153,6 +153,7 @@ static void refuse(ConnectionInfo *cnx, int logCode);
 static int readArgs (int argc, char **argv, RinetdOptions *options);
 static int getConfLine(FILE *in, char *line, int space, int *lnum);
 static int patternBad(char const *pattern);
+static void clearConfiguration(void);
 static void readConfiguration(void);
 
 static void registerPID(void);
@@ -162,7 +163,7 @@ static struct tm *get_gmtoff(int *tz);
 /* Signal handlers */
 static RETSIGTYPE plumber(int s);
 static RETSIGTYPE hup(int s);
-static RETSIGTYPE term(int s);
+static RETSIGTYPE quit(int s);
 
 
 int main(int argc, char *argv[])
@@ -205,7 +206,8 @@ int main(int argc, char *argv[])
 			signal(SIGHUP, hup);
 #endif
 #endif /* WIN32 */
-			signal(SIGTERM, term);
+			signal(SIGINT, quit);
+			signal(SIGTERM, quit);
 			readConfiguration();
 			registerPID();
 			syslog(LOG_INFO, "Starting redirections...");
@@ -222,10 +224,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-static void readConfiguration(void)
-{
-	FILE *in;
-	char line[16384];
+static void clearConfiguration(void) {
 	/* Close existing server sockets. */
 	for (int i = 0; i < seTotal; ++i) {
 		ServerInfo *srv = &seInfo[i];
@@ -252,12 +251,16 @@ static void readConfiguration(void)
 	logFileName = NULL;
 	free(pidLogFileName);
 	pidLogFileName = NULL;
+}
+
+static void readConfiguration(void) {
 	/* Parse the configuration file. */
-	in = fopen(options.conf_file, "r");
+	FILE *in = fopen(options.conf_file, "r");
 	if (!in) {
 		goto lowMemory;
 	}
 	for (int lnum = 0; ; ) {
+		char line[16384];
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
@@ -945,6 +948,7 @@ RETSIGTYPE hup(int s)
 	(void)s;
 	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
 	/* Learn the new rules */
+	clearConfiguration();
 	readConfiguration();
 #ifndef HAVE_SIGACTION
 	/* And reinstall the signal handler */
@@ -953,13 +957,16 @@ RETSIGTYPE hup(int s)
 }
 #endif /* WIN32 */
 
-RETSIGTYPE term(int s)
+RETSIGTYPE quit(int s)
 {
 	(void)s;
 	/* Obey the request, but first flush the log */
 	if (logFile) {
 		fclose(logFile);
 	}
+	/* ...and get rid of memory allocations */
+	setConnectionCount(0);
+	clearConfiguration();
 	exit(0);
 }
 
@@ -1082,7 +1089,7 @@ static int readArgs (int argc, char **argv, RinetdOptions *options)
 		}
 		switch (c) {
 			case 'c':
-				options->conf_file = strdup(optarg);
+				options->conf_file = optarg;
 				if (!options->conf_file) {
 					syslog(LOG_ERR, "Not enough memory to "
 						"launch rinetd.\n");
@@ -1090,7 +1097,7 @@ static int readArgs (int argc, char **argv, RinetdOptions *options)
 				}
 				break;
 			case 'f':
-				options->foreground=1;
+				options->foreground = 1;
 				break;
 			case 'h':
 				printf("Usage: rinetd [OPTION]\n"
