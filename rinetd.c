@@ -109,37 +109,30 @@ int logFormatCommon = 0;
 FILE *logFile = NULL;
 
 char const *logMessages[] = {
+        "unknown-error",
 	"done-local-closed",
 	"done-remote-closed",
 	"accept-failed -",
-	0,
 	"local-socket-failed -",
-	0,
 	"local-bind-failed -",
-	0,
 	"local-connect-failed -",
-	0,
 	"opened",
-	0,
 	"not-allowed",
-	0,
 	"denied",
-	0,
 };
 
 enum
 {
-	logDone = 0,
-	logAcceptFailed = 2,
-	logLocalSocketFailed = 4,
-	logLocalBindFailed = 6,
-	logLocalConnectFailed = 8,
-	logOpened = 10,
-	logNotAllowed = 12,
-	logDenied = 14,
-
-	logLocalClosedFirst = 0,
-	logRemoteClosedFirst = 1,
+	logUnknownError = 0,
+	logLocalClosedFirst,
+	logRemoteClosedFirst,
+	logAcceptFailed,
+	logLocalSocketFailed,
+	logLocalBindFailed,
+	logLocalConnectFailed,
+	logOpened,
+	logNotAllowed,
+	logDenied,
 };
 
 RinetdOptions options = {
@@ -645,7 +638,7 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 {
 	if (cnx->coClosing && (socket->sentPos == other_socket->recvPos)) {
 		PERROR("rinetd: local closed and no more output");
-		logEvent(cnx, cnx->server, logDone | cnx->coLog);
+		logEvent(cnx, cnx->server, cnx->coLog);
 		closesocket(socket->fd);
 		socket->fd = INVALID_SOCKET;
 		return;
@@ -730,7 +723,7 @@ static void handleAccept(int i)
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
 	cnx->coClosing = 0;
-	cnx->coLog = 0;
+	cnx->coLog = logUnknownError;
 	cnx->server = i;
 
 	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
