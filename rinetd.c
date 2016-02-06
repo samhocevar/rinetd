@@ -91,6 +91,16 @@ typedef struct {
 
 #include "match.h"
 
+/* Constants */
+
+static int const RINETD_BUFFER_SIZE = 1024;
+static int const RINETD_LISTEN_BACKLOG = 128;
+
+#define RINETD_CONFIG_FILE "/etc/rinetd.conf"
+#define RINETD_PID_FILE "/var/run/rinetd.pid"
+
+/* Program state */
+
 typedef struct _server_info ServerInfo;
 struct _server_info
 {
@@ -151,8 +161,6 @@ FILE *logFile = NULL;
 	co: connections
 */
 
-static int const bufferSpace = 1024;
-
 static void selectPass(void);
 static void readConfiguration(void);
 
@@ -212,7 +220,7 @@ struct _rinetd_options
 };
 
 RinetdOptions options = {
-	"/etc/rinetd.conf",
+	RINETD_CONFIG_FILE,
 	0,
 };
 
@@ -488,7 +496,7 @@ static void readConfiguration(void)
 				closesocket(fd);
 				continue;
 			}
-			if (listen(fd, 5) == SOCKET_ERROR) {
+			if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't listen to "
 					"address %s port %d (%m)\n",
@@ -589,7 +597,7 @@ void allocConnections(int count)
 		ConnectionInfo *cnx = &newCoInfo[i];
 		cnx->loFd = INVALID_SOCKET;
 		cnx->reFd = INVALID_SOCKET;
-		cnx->input = (char *) malloc(sizeof(char) * 2 * bufferSpace);
+		cnx->input = (char *) malloc(sizeof(char) * 2 * RINETD_BUFFER_SIZE);
 		if (!cnx->input) {
 			while (i-- >= coTotal) {
 				free(newCoInfo[i].input);
@@ -597,7 +605,7 @@ void allocConnections(int count)
 			free(newCoInfo);
 			return;
 		}
-		cnx->output = cnx->input + bufferSpace;
+		cnx->output = cnx->input + RINETD_BUFFER_SIZE;
 	}
 
 	free(coInfo);
@@ -641,7 +649,7 @@ static void selectPass(void) {
 			}
 		}
 		/* Get more input if we have room for it */
-		if (cnx->reFd != INVALID_SOCKET && (cnx->inputRPos < bufferSpace)) {
+		if (cnx->reFd != INVALID_SOCKET && (cnx->inputRPos < RINETD_BUFFER_SIZE)) {
 			FD_SET_EXT(cnx->reFd, readfds);
 		}
 		/* Send more output if we have any */
@@ -650,7 +658,7 @@ static void selectPass(void) {
 		}
 		/* Accept more output from the local
 			server if there's room */
-		if (cnx->loFd != INVALID_SOCKET && (cnx->outputRPos < bufferSpace)) {
+		if (cnx->loFd != INVALID_SOCKET && (cnx->outputRPos < RINETD_BUFFER_SIZE)) {
 			FD_SET_EXT(cnx->loFd, readfds);
 		}
 		/* Send more input to the local server
@@ -694,11 +702,11 @@ static void selectPass(void) {
 
 void handleRemoteRead(ConnectionInfo *cnx)
 {
-	if (bufferSpace == cnx->inputRPos) {
+	if (RINETD_BUFFER_SIZE == cnx->inputRPos) {
 		return;
 	}
 	int got = recv(cnx->reFd, cnx->input + cnx->inputRPos,
-		bufferSpace - cnx->inputRPos, 0);
+		RINETD_BUFFER_SIZE - cnx->inputRPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -747,11 +755,11 @@ void handleRemoteWrite(ConnectionInfo *cnx)
 
 void handleLocalRead(ConnectionInfo *cnx)
 {
-	if (bufferSpace == cnx->outputRPos) {
+	if (RINETD_BUFFER_SIZE == cnx->outputRPos) {
 		return;
 	}
 	int got = recv(cnx->loFd, cnx->output + cnx->outputRPos,
-		bufferSpace - cnx->outputRPos, 0);
+		RINETD_BUFFER_SIZE - cnx->outputRPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -1093,14 +1101,13 @@ RETSIGTYPE term(int s)
 
 void RegisterPID(void)
 {
-	FILE *pid_file;
-	char const *pid_file_name = "/var/run/rinetd.pid";
+	char const *pid_file_name = RINETD_PID_FILE;
 	if (pidLogFileName) {
 		pid_file_name = pidLogFileName;
 	}
 /* add other systems with wherever they register processes */
 #if	defined(__linux__)
-	pid_file = fopen(pid_file_name, "w");
+	FILE *pid_file = fopen(pid_file_name, "w");
 	if (pid_file == NULL) {
 		/* non-fatal, non-Linux may lack /var/run... */
 		fprintf(stderr, "rinetd: Couldn't write to "
