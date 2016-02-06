@@ -292,7 +292,7 @@ static void readConfiguration(void)
 		/* Close existing server sockets. */
 		for (int i = 0; i < seTotal; ++i) {
 			ServerInfo *srv = &seInfo[i];
-			if (srv->fd != -1) {
+			if (srv->fd != INVALID_SOCKET) {
 				closesocket(srv->fd);
 				free(srv->fromHost);
 				free(srv->toHost);
@@ -300,6 +300,7 @@ static void readConfiguration(void)
 		}
 		/* Free memory associated with previous set. */
 		free(seInfo);
+		seInfo = NULL;
 	}
 	seTotal = 0;
 	if (allowRules) {
@@ -309,6 +310,7 @@ static void readConfiguration(void)
 		}
 		/* Free memory associated with previous set. */
 		free(allowRules);
+		allowRules = NULL;
 		globalAllowRules = 0;
 	}
 	allowRulesTotal = 0;
@@ -319,71 +321,23 @@ static void readConfiguration(void)
 		}
 		/* Free memory associated with previous set. */
 		free(denyRules);
+		denyRules = NULL;
 		globalDenyRules = 0;
 	}
 	denyRulesTotal = 0;
 	if (logFileName) {
 		free(logFileName);
-		logFileName = 0;
+		logFileName = NULL;
 	}
 	if (pidLogFileName) {
 		free(pidLogFileName);
-		pidLogFileName = 0;
+		pidLogFileName = NULL;
 	}
-	/* 1. Count the non-comment lines of each type and
-		allocate space for the data. */
-	in = fopen(options.conf_file, "r");
-	if (!in) {
-		fprintf(stderr, "rinetd: can't open %s\n", options.conf_file);
-		exit(1);
-	}
-	while (1) {
-		char *t = 0;
-		int dummy;
-		if (!getConfLine(in, line, sizeof(line), &dummy)) {
-			break;
-		}
-		t = strtok(line, " \t\r\n");
-		if (!strcmp(t, "logfile")) {
-			continue;
-		} else if (!strcmp(t, "pidlogfile")) {
-			continue;
-		} else if (!strcmp(t, "logcommon")) {
-			continue;
-		} else if (!strcmp(t, "allow")) {
-			allowRulesTotal++;
-		} else if (!strcmp(t, "deny")) {
-			denyRulesTotal++;
-		} else {
-			/* A regular forwarding rule */
-			seTotal++;
-		}
-	}
-	fclose(in);
-	seInfo = (ServerInfo *) malloc(sizeof(ServerInfo) * seTotal);
-	if (!seInfo) {
-		goto lowMemory;
-	}
-	for (int i = 0; i < seTotal; ++i) {
-		memset(&seInfo[i], 0, sizeof(seInfo[i]));
-		seInfo[i].fd = INVALID_SOCKET;
-	}
-	allowRules = (char **)
-		malloc(sizeof(char *) * allowRulesTotal);
-	if (!allowRules) {
-		goto lowMemory;
-	}
-	denyRules = (char **)
-		malloc(sizeof(char *) * denyRulesTotal);
-	if (!denyRules) {
-		goto lowMemory;
-	}
-	/* 2. Make a second pass to configure them. */
+	/* Parse the configuration file. */
 	in = fopen(options.conf_file, "r");
 	if (!in) {
 		goto lowMemory;
 	}
-	int seActualTotal = 0;
 	for (int lnum = 0, ai = 0, di = 0; ; ) {
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
@@ -411,15 +365,20 @@ static void readConfiguration(void)
 				continue;
 			}
 
+			allowRules = (char **)
+				realloc(allowRules, sizeof(char *) * (ai + 1));
+			if (!allowRules) {
+				goto lowMemory;
+			}
 			allowRules[ai] = strdup(pattern);
 			if (!allowRules[ai]) {
 				goto lowMemory;
 			}
-			if (seActualTotal > 0) {
-				if (seInfo[seActualTotal - 1].allowRulesTotal == 0) {
-					seInfo[seActualTotal - 1].allowRules = ai;
+			if (seTotal > 0) {
+				if (seInfo[seTotal - 1].allowRulesTotal == 0) {
+					seInfo[seTotal - 1].allowRules = ai;
 				}
-				seInfo[seActualTotal - 1].allowRulesTotal++;
+				seInfo[seTotal - 1].allowRulesTotal++;
 			} else {
 				globalAllowRules++;
 			}
@@ -431,15 +390,20 @@ static void readConfiguration(void)
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
+			denyRules = (char **)
+				realloc(denyRules, sizeof(char *) * (di + 1));
+			if (!denyRules) {
+				goto lowMemory;
+			}
 			denyRules[di] = strdup(pattern);
 			if (!denyRules[di]) {
 				goto lowMemory;
 			}
-			if (seActualTotal > 0) {
-				if (seInfo[seActualTotal - 1].denyRulesTotal == 0) {
-					seInfo[seActualTotal - 1].denyRules = di;
+			if (seTotal > 0) {
+				if (seInfo[seTotal - 1].denyRulesTotal == 0) {
+					seInfo[seTotal - 1].denyRules = di;
 				}
-				seInfo[seActualTotal - 1].denyRulesTotal++;
+				seInfo[seTotal - 1].denyRulesTotal++;
 			} else {
 				globalDenyRules++;
 			}
@@ -469,13 +433,7 @@ static void readConfiguration(void)
 		} else if (!strcmp(bindAddress, "logcommon")) {
 			logFormatCommon = 1;
 		} else {
-			if (seActualTotal >= seTotal) {
-				syslog(LOG_ERR, "unexpected extra rule "
-					"found on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
 			/* A regular forwarding rule. */
-			ServerInfo *srv = &seInfo[seActualTotal];
 			char *bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
 				syslog(LOG_ERR, "no bind port "
@@ -517,16 +475,15 @@ static void readConfiguration(void)
 				continue;
 			}
 			/* Make a server socket */
-			srv->fd = socket(PF_INET, SOCK_STREAM, 0);
-			if (srv->fd == INVALID_SOCKET) {
+			int fd = socket(PF_INET, SOCK_STREAM, 0);
+			if (fd == INVALID_SOCKET) {
 				syslog(LOG_ERR, "couldn't create "
 					"server socket! (%m)\n");
-				srv->fd = -1;
 				continue;
 			}
 #ifndef WIN32
-			if (srv->fd > maxfd) {
-				maxfd = srv->fd;
+			if (fd > maxfd) {
+				maxfd = fd;
 			}
 #endif
 			struct sockaddr_in saddr;
@@ -534,38 +491,44 @@ static void readConfiguration(void)
 			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
 			saddr.sin_port = htons(bindPort);
 			int tmp = 1;
-			setsockopt(srv->fd, SOL_SOCKET, SO_REUSEADDR,
+			setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
 				(const char *) &tmp, sizeof(tmp));
-			if (bind(srv->fd, (struct sockaddr *)
+			if (bind(fd, (struct sockaddr *)
 				&saddr, sizeof(saddr)) == SOCKET_ERROR)
 			{
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't bind to "
 					"address %s port %d (%m)\n",
 					bindAddress, bindPort);
-				closesocket(srv->fd);
-				srv->fd = INVALID_SOCKET;
+				closesocket(fd);
 				continue;
 			}
-			if (listen(srv->fd, 5) == SOCKET_ERROR) {
+			if (listen(fd, 5) == SOCKET_ERROR) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't listen to "
 					"address %s port %d (%m)\n",
 					bindAddress, bindPort);
-				closesocket(srv->fd);
-				srv->fd = INVALID_SOCKET;
+				closesocket(fd);
 				continue;
 			}
-			ioctlsocket(srv->fd, FIONBIO, &tmp);
+			ioctlsocket(fd, FIONBIO, &tmp);
 			if (!getAddress(connectAddress, &iaddr)) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "host %s could not be "
 					"resolved on file %s, line %d.\n",
 					bindAddress, options.conf_file, lnum);
-				closesocket(srv->fd);
-				srv->fd = INVALID_SOCKET;
+				closesocket(fd);
 				continue;
 			}
+			/* Allocate server info */
+			seInfo = (ServerInfo *)
+				realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+			if (!seInfo) {
+				goto lowMemory;
+			}
+			ServerInfo *srv = &seInfo[seTotal];
+			memset(srv, 0, sizeof(*srv));
+			srv->fd = fd;
 			srv->localAddr = iaddr;
 			srv->localPort = htons(connectPort);
 			srv->fromHost = strdup(bindAddress);
@@ -578,12 +541,10 @@ static void readConfiguration(void)
 				goto lowMemory;
 			}
 			srv->toPort = connectPort;
-			++seActualTotal;
+			++seTotal;
 		}
 	}
 	fclose(in);
-	/* Maybe we found fewer forward rules than expected */
-	seTotal = seActualTotal;
 	/* Open the log file */
 	if (logFile) {
 		fclose(logFile);
@@ -719,7 +680,7 @@ static void selectPass(void) {
 	}
 	select(maxfd + 1, readfds, writefds, 0, 0);
 	for (int i = 0; i < seTotal; ++i) {
-		if (seInfo[i].fd != -1) {
+		if (seInfo[i].fd != INVALID_SOCKET) {
 			if (FD_ISSET_EXT(seInfo[i].fd, readfds)) {
 				handleAccept(i);
 			}
