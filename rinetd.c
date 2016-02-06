@@ -293,9 +293,9 @@ static void readConfiguration(void)
 		ServerInfo *srv = &seInfo[i];
 		if (srv->fd != INVALID_SOCKET) {
 			closesocket(srv->fd);
-			free(srv->fromHost);
-			free(srv->toHost);
 		}
+		free(srv->fromHost);
+		free(srv->toHost);
 	}
 	/* Free memory associated with previous set. */
 	free(seInfo);
