@@ -6,7 +6,7 @@
 #	define RETSIGTYPE void
 #endif
 
-#ifdef WIN32
+#if WIN32
 #	include <windows.h>
 #	include <winsock.h>
 #	include "getopt.h"
@@ -42,39 +42,27 @@
 #endif
 #include <ctype.h>
 
-#ifndef WIN32
-	/* Windows sockets compatibility defines */
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
-static int closesocket(int s) {
-	return close(s);
-}
-#	define ioctlsocket ioctl
-#	define MAKEWORD(a, b)
-#	define WSAStartup(a, b) (0)
-#	define	WSACleanup()
-#	ifdef __MAC__
-		/* The constants for these are a little screwy in the prelinked
-			MSL GUSI lib and we can't rebuild it, so roll with it */
-#		define WSAEWOULDBLOCK EWOULDBLOCK
-#		define WSAEAGAIN EAGAIN
-#		define WSAEINPROGRESS EINPROGRESS
-#	else
-#		define WSAEWOULDBLOCK EWOULDBLOCK
-#		define WSAEAGAIN EAGAIN
-#		define WSAEINPROGRESS EINPROGRESS
-#	endif /* __MAC__ */
-#	define WSAEINTR EINTR
-#	define SOCKET int
-#	define GetLastError() (errno)
-typedef struct {
-	int dummy;
-} WSADATA;
-#else
+#if WIN32
 	/* WIN32 doesn't really have WSAEAGAIN */
 #	ifndef WSAEAGAIN
 #		define WSAEAGAIN WSAEWOULDBLOCK
 #	endif
+#else
+	/* Windows sockets compatibility defines */
+#	define INVALID_SOCKET (-1)
+#	define SOCKET_ERROR (-1)
+static inline int closesocket(int s) {
+	return close(s);
+}
+#	define ioctlsocket ioctl
+#	define WSAEWOULDBLOCK EWOULDBLOCK
+#	define WSAEAGAIN EAGAIN
+#	define WSAEINPROGRESS EINPROGRESS
+#	define WSAEINTR EINTR
+#	define SOCKET int
+static inline int GetLastError(void) {
+	return errno;
+}
 #endif /* WIN32 */
 
 #ifdef DEBUG
@@ -160,8 +148,12 @@ static void logEvent(ConnectionInfo const *cnx, int i, int result);
 static struct tm *get_gmtoff(int *tz);
 
 /* Signal handlers */
+#if !HAVE_SIGACTION && !WIN32
 static RETSIGTYPE plumber(int s);
+#endif
+#if !WIN32
 static RETSIGTYPE hup(int s);
+#endif
 static RETSIGTYPE quit(int s);
 
 
@@ -169,12 +161,7 @@ int main(int argc, char *argv[])
 {
 #ifdef WIN32
 	WSADATA wsaData;
-#endif
-	int result;
-#ifndef WIN32
-	openlog("rinetd", LOG_PID, LOG_DAEMON);
-#endif
-	result = WSAStartup(MAKEWORD(1, 1), &wsaData);
+	int result = WSAStartup(MAKEWORD(1, 1), &wsaData);
 	if (result != 0) {
 		fprintf(stderr, "Your computer was not connected "
 			"to the Internet at the time that "
@@ -183,43 +170,45 @@ int main(int argc, char *argv[])
 			"connection to the Internet.");
 		exit(1);
 	}
+#else
+	openlog("rinetd", LOG_PID, LOG_DAEMON);
+#endif
+
 	readArgs(argc, argv, &options);
-#ifndef WIN32
-#ifdef DEBUG
-	{
-#elif HAVE_DAEMON
-	if (options.foreground || !daemon(0, 0)) {
-#else
-	if (options.foreground || !fork()) {
-#endif
-#ifdef HAVE_SIGACTION
-			struct sigaction act;
-			act.sa_handler=SIG_IGN;
-			sigemptyset (&act.sa_mask);
-			act.sa_flags=SA_RESTART;
-			sigaction(SIGPIPE, &act, NULL);
-			act.sa_handler=&hup;
-			sigaction(SIGHUP, &act, NULL);
-#else
-			signal(SIGPIPE, plumber);
-			signal(SIGHUP, hup);
-#endif
-#endif /* WIN32 */
-			signal(SIGINT, quit);
-			signal(SIGTERM, quit);
-			readConfiguration();
-			registerPID();
-			syslog(LOG_INFO, "Starting redirections...");
-			while (1) {
-				selectPass();
-			}
-#ifndef WIN32
-#ifndef DEBUG
-	} else {
+
+#if HAVE_DAEMON && !DEBUG
+	if (!options.foreground && daemon(0, 0) != 0) {
 		exit(0);
-#endif
 	}
-#endif /* WIN32 */
+#elif HAVE_FORK && !DEBUG
+	if (!options.foreground && fork() != 0) {
+		exit(0);
+	}
+#endif
+
+#if HAVE_SIGACTION
+	struct sigaction act;
+	act.sa_handler = SIG_IGN;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = SA_RESTART;
+	sigaction(SIGPIPE, &act, NULL);
+	act.sa_handler = &hup;
+	sigaction(SIGHUP, &act, NULL);
+#elif !WIN32
+	signal(SIGPIPE, plumber);
+	signal(SIGHUP, hup);
+#endif
+	signal(SIGINT, quit);
+	signal(SIGTERM, quit);
+
+	readConfiguration();
+	registerPID();
+
+	syslog(LOG_INFO, "Starting redirections...");
+	while (1) {
+		selectPass();
+	}
+
 	return 0;
 }
 
@@ -263,24 +252,25 @@ static void readConfiguration(void) {
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
-		char const *bindAddress = strtok(line, " \t\r\n");
-		if (!bindAddress) {
+		char const *currentToken = strtok(line, " \t\r\n");
+		if (!currentToken) {
 			syslog(LOG_ERR, "no bind address specified "
 				"on file %s, line %d.\n", options.conf_file, lnum);
 			continue;
 		}
-		if (!strcmp(bindAddress, "allow")
-			|| !strcmp(bindAddress, "deny")) {
+		if (!strcmp(currentToken, "allow")
+			|| !strcmp(currentToken, "deny")) {
 			char const *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
 				syslog(LOG_ERR, "nothing to %s "
-					"specified on file %s, line %d.\n", bindAddress, options.conf_file, lnum);
+					"specified on file %s, line %d.\n", currentToken, options.conf_file, lnum);
 				continue;
 			}
 			int bad = 0;
 			for (char const *p = pattern; *p; ++p) {
 				if (!strchr("0123456789?*.", *p)) {
 					bad = 1;
+					break;
 				}
 			}
 			if (bad) {
@@ -302,7 +292,7 @@ static void readConfiguration(void) {
 			if (!allRules[allRulesCount].pattern) {
 				goto lowMemory;
 			}
-			allRules[allRulesCount].type = bindAddress[0] == 'a' ? allowRule : denyRule;
+			allRules[allRulesCount].type = currentToken[0] == 'a' ? allowRule : denyRule;
 			if (seTotal > 0) {
 				if (seInfo[seTotal - 1].rulesStart == 0) {
 					seInfo[seTotal - 1].rulesStart = allRulesCount;
@@ -312,7 +302,7 @@ static void readConfiguration(void) {
 				++globalRulesCount;
 			}
 			++allRulesCount;
-		} else if (!strcmp(bindAddress, "logfile")) {
+		} else if (!strcmp(currentToken, "logfile")) {
 			char const *nt = strtok(0, " \t\r\n");
 			if (!nt) {
 				syslog(LOG_ERR, "no log file name "
@@ -323,7 +313,7 @@ static void readConfiguration(void) {
 			if (!logFileName) {
 				goto lowMemory;
 			}
-		} else if (!strcmp(bindAddress, "pidlogfile")) {
+		} else if (!strcmp(currentToken, "pidlogfile")) {
 			char const *nt = strtok(0, " \t\r\n");
 			if (!nt) {
 				syslog(LOG_ERR, "no PID log file name "
@@ -334,10 +324,11 @@ static void readConfiguration(void) {
 			if (!pidLogFileName) {
 				goto lowMemory;
 			}
-		} else if (!strcmp(bindAddress, "logcommon")) {
+		} else if (!strcmp(currentToken, "logcommon")) {
 			logFormatCommon = 1;
 		} else {
 			/* A regular forwarding rule. */
+			char const *bindAddress = currentToken;
 			char const *bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
 				syslog(LOG_ERR, "no bind port "
@@ -385,11 +376,6 @@ static void readConfiguration(void) {
 					"server socket! (%m)\n");
 				continue;
 			}
-#ifndef WIN32
-			if (fd > maxfd) {
-				maxfd = fd;
-			}
-#endif
 			struct sockaddr_in saddr;
 			saddr.sin_family = AF_INET;
 			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
@@ -445,6 +431,11 @@ static void readConfiguration(void) {
 				goto lowMemory;
 			}
 			srv->toPort = connectPort;
+#ifndef WIN32
+			if (fd > maxfd) {
+				maxfd = fd;
+			}
+#endif
 			++seTotal;
 		}
 	}
@@ -939,8 +930,7 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 	return -1;
 }
 
-#ifndef WIN32
-#ifndef HAVE_SIGACTION
+#if !HAVE_SIGACTION && !WIN32
 RETSIGTYPE plumber(int s)
 {
 	/* Just reinstall */
@@ -948,6 +938,7 @@ RETSIGTYPE plumber(int s)
 }
 #endif
 
+#if !WIN32
 RETSIGTYPE hup(int s)
 {
 	(void)s;
@@ -955,7 +946,7 @@ RETSIGTYPE hup(int s)
 	/* Learn the new rules */
 	clearConfiguration();
 	readConfiguration();
-#ifndef HAVE_SIGACTION
+#if !HAVE_SIGACTION
 	/* And reinstall the signal handler */
 	signal(SIGHUP, hup);
 #endif

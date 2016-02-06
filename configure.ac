@@ -29,7 +29,7 @@ AC_FUNC_FORK
 AC_FUNC_MALLOC
 AC_TYPE_SIGNAL
 AC_FUNC_STRFTIME
-AC_CHECK_FUNCS([gethostbyname memset select socket strstr daemon sigaction])
+AC_CHECK_FUNCS([gethostbyname memset select socket strstr daemon fork sigaction])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
