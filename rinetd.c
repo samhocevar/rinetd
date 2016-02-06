@@ -146,6 +146,7 @@ static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleAccept(int i);
 static ConnectionInfo *findAvailableConnection(void);
+static void setConnectionCount(int newCount);
 static int getAddress(char const *host, struct in_addr *iaddr);
 static void refuse(ConnectionInfo *cnx, int logCode);
 
@@ -483,19 +484,34 @@ static int getConfLine(FILE *in, char *line, int space, int *lnum)
 	}
 }
 
-static void allocConnections(int count)
+static void setConnectionCount(int newCount)
 {
+	if (newCount == coTotal) {
+		return;
+	}
+
+	for (int i = newCount; i < coTotal; ++i) {
+		free(coInfo[i].local.buffer);
+	}
+
+	if (newCount == 0) {
+		free(coInfo);
+		coInfo = NULL;
+		coTotal = 0;
+		return;
+	}
+
 	ConnectionInfo * newCoInfo = (ConnectionInfo *)
-		malloc(sizeof(ConnectionInfo) * (coTotal + count));
+		malloc(sizeof(ConnectionInfo) * newCount);
 	if (!newCoInfo) {
 		return;
 	}
 
 	memcpy(newCoInfo, coInfo, sizeof(ConnectionInfo) * coTotal);
-	memset(newCoInfo + coTotal, 0, sizeof(ConnectionInfo) * count);
 
-	for (int i = coTotal; i < coTotal + count; ++i) {
+	for (int i = coTotal; i < newCount; ++i) {
 		ConnectionInfo *cnx = &newCoInfo[i];
+		memset(cnx, 0, sizeof(*cnx));
 		cnx->local.fd = INVALID_SOCKET;
 		cnx->remote.fd = INVALID_SOCKET;
 		cnx->local.buffer = (char *) malloc(sizeof(char) * 2 * RINETD_BUFFER_SIZE);
@@ -511,7 +527,7 @@ static void allocConnections(int count)
 
 	free(coInfo);
 	coInfo = newCoInfo;
-	coTotal += count;
+	coTotal = newCount;
 }
 
 static ConnectionInfo *findAvailableConnection(void)
@@ -526,7 +542,7 @@ static ConnectionInfo *findAvailableConnection(void)
 
 	/* Allocate new connections and pick the first one */
 	int oldTotal = coTotal;
-	allocConnections(8 + coTotal / 3);
+	setConnectionCount(coTotal * 4 / 3 + 8);
 	if (coTotal == oldTotal) {
 		syslog(LOG_ERR, "not enough memory to add slots. "
 			"Currently %d slots.\n", coTotal);
