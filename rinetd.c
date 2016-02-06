@@ -175,7 +175,6 @@ RETSIGTYPE plumber(int s);
 RETSIGTYPE hup(int s);
 RETSIGTYPE term(int s);
 
-void allocConnections(int count);
 void RegisterPID(void);
 
 void logEvent(ConnectionInfo const *cnx, int i, int result);
@@ -556,7 +555,7 @@ static int getConfLine(FILE *in, char *line, int space, int *lnum)
 	}
 }
 
-void allocConnections(int count)
+static void allocConnections(int count)
 {
 	ConnectionInfo * newCoInfo = (ConnectionInfo *)
 		malloc(sizeof(ConnectionInfo) * (coTotal + count));
@@ -587,11 +586,32 @@ void allocConnections(int count)
 	coTotal += count;
 }
 
+static ConnectionInfo *findAvailableConnection()
+{
+	/* Find an existing closed connection to reuse */
+	for (int j = 0; j < coTotal; ++j) {
+		if (coInfo[j].local.fd == INVALID_SOCKET
+			&& coInfo[j].remote.fd == INVALID_SOCKET) {
+			return &coInfo[j];
+		}
+	}
+
+	/* Allocate new connections and pick the first one */
+	int oldTotal = coTotal;
+	allocConnections(8 + coTotal / 3);
+	if (coTotal == oldTotal) {
+		syslog(LOG_ERR, "not enough memory to add slots. "
+			"Currently %d slots.\n", coTotal);
+		/* Go back to the previous total number of slots */
+		return NULL;
+	}
+	return &coInfo[oldTotal];
+}
+
 static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
-void handleAccept(int i);
-void openLocalFd(int se, ConnectionInfo *cnx);
+static void handleAccept(int i);
 
 static void selectPass(void) {
 
@@ -748,8 +768,12 @@ void refuse(ConnectionInfo *cnx, int logCode);
 
 void handleAccept(int i)
 {
-	ServerInfo *srv = &seInfo[i];
-	ConnectionInfo *cnx = NULL;
+	ConnectionInfo *cnx = findAvailableConnection();
+	if (!cnx) {
+		return;
+	}
+
+	ServerInfo const *srv = &seInfo[i];
 	struct sockaddr addr;
 	struct in_addr address;
 #if HAVE_SOCKLEN_T
@@ -764,11 +788,6 @@ void handleAccept(int i)
 		logEvent(NULL, i, logAcceptFailed);
 		return;
 	}
-#ifndef WIN32
-	if (nfd > maxfd) {
-		maxfd = nfd;
-	}
-#endif /* WIN32 */
 
 	int tmp = 1;
 	ioctlsocket(nfd, FIONBIO, &tmp);
@@ -777,39 +796,16 @@ void handleAccept(int i)
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
 
-	/* Find an existing closed connection to reuse */
-	for (int j = 0; j < coTotal; ++j) {
-		if (coInfo[j].local.fd == INVALID_SOCKET
-			&& coInfo[j].remote.fd == INVALID_SOCKET) {
-			cnx = &coInfo[j];
-			break;
-		}
-	}
-
-	/* Allocate new connections and pick the first one */
-	if (cnx == NULL) {
-		int oldTotal = coTotal;
-		allocConnections(8 + coTotal / 3);
-		if (coTotal == oldTotal) {
-			syslog(LOG_ERR, "not enough memory to add slots. "
-				"Currently %d slots.\n", coTotal);
-			/* Go back to the previous total number of slots */
-			return;
-		}
-		cnx = &coInfo[oldTotal];
-	}
-
-	cnx->remote.recvPos = 0;
-	cnx->local.sentPos = 0;
-	cnx->local.recvPos = 0;
-	cnx->remote.sentPos = 0;
-	cnx->coClosing = 0;
 	cnx->local.fd = INVALID_SOCKET;
+	cnx->local.recvPos = cnx->local.sentPos = 0;
+	cnx->local.recvBytes = cnx->local.sentBytes = 0;
 	cnx->remote.fd = nfd;
-	cnx->remote.recvBytes = 0;
-	cnx->remote.sentBytes = 0;
+	cnx->remote.recvPos = cnx->remote.sentPos = 0;
+	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
+	cnx->coClosing = 0;
 	cnx->coLog = 0;
 	cnx->server = i;
+
 	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
 	cnx->reAddresses.s_addr = address.s_addr = sin->sin_addr.s_addr;
 	char const *addressText = inet_ntoa(address);
@@ -869,11 +865,6 @@ void handleAccept(int i)
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
-	openLocalFd(i, cnx);
-}
-
-void openLocalFd(int se, ConnectionInfo *cnx)
-{
 	struct sockaddr_in saddr;
 	cnx->local.fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (cnx->local.fd == INVALID_SOCKET) {
@@ -883,11 +874,6 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 		logEvent(cnx, cnx->server, logLocalSocketFailed);
 		return;
 	}
-#ifndef WIN32
-	if (cnx->local.fd > maxfd) {
-		maxfd = cnx->local.fd;
-	}
-#endif /* WIN32 */
 
 #if 0 // You don't need bind(2) on a socket you'll use for connect(2).
 	/* Bind the local socket */
@@ -906,10 +892,9 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 
 	memset(&saddr, 0, sizeof(struct sockaddr_in));
 	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &seInfo[se].localAddr, sizeof(struct in_addr));
-	saddr.sin_port = seInfo[se].localPort;
+	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
+	saddr.sin_port = srv->localPort;
 
-	int tmp;
 #ifndef WIN32
 #ifdef __linux__
 	tmp = 0;
@@ -937,6 +922,16 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 			return;
 		}
 	}
+
+#ifndef WIN32
+	if (cnx->local.fd > maxfd) {
+		maxfd = cnx->local.fd;
+	}
+	if (cnx->remote.fd > maxfd) {
+		maxfd = cnx->remote.fd;
+	}
+#endif /* WIN32 */
+
 	logEvent(cnx, cnx->server, logOpened);
 }
 
@@ -1049,7 +1044,7 @@ error:
 #endif	/* __linux__ */
 }
 
-struct in_addr nullAddress = { 0 };
+static struct in_addr const nullAddress = { 0 };
 
 struct tm *get_gmtoff(int *tz);
 
