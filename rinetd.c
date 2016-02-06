@@ -169,7 +169,7 @@ void RegisterPID(void);
 
 void logEvent(ConnectionInfo const *cnx, int i, int result);
 
-int getAddress(char *host, struct in_addr *iaddr);
+static int getAddress(char const *host, struct in_addr *iaddr);
 
 char const *logMessages[] = {
 	"done-local-closed",
@@ -615,7 +615,6 @@ void handleCloseFromLocal(ConnectionInfo *cnx);
 void handleCloseFromRemote(ConnectionInfo *cnx);
 void handleAccept(int i);
 void openLocalFd(int se, ConnectionInfo *cnx);
-int getAddress(char *host, struct in_addr *iaddr);
 
 static void selectPass(void) {
 
@@ -1057,48 +1056,46 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 	logEvent(cnx, cnx->server, logOpened);
 }
 
-int getAddress(char *host, struct in_addr *iaddr)
+static int getAddress(char const *host, struct in_addr *iaddr)
 {
-	char *p = host;
-	int ishost = 0;
-	while (*p) {
-		if (!isdigit(*p) && (*p) != '.') {
-			ishost = 1;
+	/* If this is an IP address, use inet_addr() */
+	int is_ipaddr = 1;
+	for (char const *p = host; *p; ++p) {
+		if (!isdigit(*p) && *p != '.') {
+			is_ipaddr = 0;
 			break;
 		}
-		p++;
 	}
-	if (ishost) {
-		struct hostent *h = gethostbyname(host);
-		if (!h) {
-			const char *msg = "(unknown DNS error)";
-			switch(h_errno)
-			{
-			case HOST_NOT_FOUND:
-				msg = "The specified host is unknown.";
-				break;
-			case NO_ADDRESS:
-				msg = "The requested name is valid but does not have an IP address.";
-				break;
-			case NO_RECOVERY:
-				msg = "A non-recoverable name server error occurred.";
-				break;
-			case TRY_AGAIN:
-				msg = "A temporary error occurred on an authoritative name server.  Try again later.";
-				break;
-			}
-			syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
-			return 0;
-		}
-		memcpy(
-			(void *) &iaddr->s_addr,
-			(void *) h->h_addr,
-			4);
-		return 1;
-	} else {
+	if (is_ipaddr) {
 		iaddr->s_addr = inet_addr(host);
 		return 1;
 	}
+
+	/* Otherwise, use gethostbyname() */
+	struct hostent *h = gethostbyname(host);
+	if (h) {
+		memcpy(&iaddr->s_addr, h->h_addr, 4);
+		return 1;
+	}
+
+	char const *msg = "(unknown DNS error)";
+	switch (h_errno)
+	{
+	case HOST_NOT_FOUND:
+		msg = "The specified host is unknown.";
+		break;
+	case NO_ADDRESS:
+		msg = "The requested name is valid but does not have an IP address.";
+		break;
+	case NO_RECOVERY:
+		msg = "A non-recoverable name server error occurred.";
+		break;
+	case TRY_AGAIN:
+		msg = "A temporary error occurred on an authoritative name server.  Try again later.";
+		break;
+	}
+	syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
+	return 0;
 }
 
 #ifndef WIN32
