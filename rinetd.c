@@ -93,7 +93,7 @@ typedef struct {
 
 /* Constants */
 
-static int const RINETD_BUFFER_SIZE = 1024;
+static int const RINETD_BUFFER_SIZE = 16384;
 static int const RINETD_LISTEN_BACKLOG = 128;
 
 #define RINETD_CONFIG_FILE "/etc/rinetd.conf"
