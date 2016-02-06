@@ -8,7 +8,7 @@ man_MANS = rinetd.8
 sysconf_DATA = rinetd.conf
 
 sbin_PROGRAMS = rinetd
-rinetd_SOURCES = rinetd.c match.c match.h
+rinetd_SOURCES = rinetd.c rinetd.h match.c match.h
 
 # _POSIX_C_SOURCE is for SA_RESTART and others
 # _XOPEN_SOURCE is for struct sigaction

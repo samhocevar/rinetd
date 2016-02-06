@@ -90,73 +90,14 @@ typedef struct {
 #endif /* FIONBIO */
 
 #include "match.h"
-
-/* Constants */
-
-static int const RINETD_BUFFER_SIZE = 16384;
-static int const RINETD_LISTEN_BACKLOG = 128;
-
-#define RINETD_CONFIG_FILE "/etc/rinetd.conf"
-#define RINETD_PID_FILE "/var/run/rinetd.pid"
-
-/* Program state */
-
-enum ruleType {
-	allowRule,
-	denyRule,
-};
-
-typedef struct _rule Rule;
-struct _rule
-{
-	char *pattern;
-	int type;
-};
+#include "rinetd.h"
 
 Rule *allRules = NULL;
 int allRulesCount = 0;
 int globalRulesCount = 0;
 
-typedef struct _server_info ServerInfo;
-struct _server_info {
-	SOCKET fd;
-
-	/* In network order, for network purposes */
-	struct in_addr localAddr;
-	unsigned short localPort;
-
-	/* In ASCII and local byte order, for logging purposes */
-	char *fromHost, *toHost;
-	int fromPort, toPort;
-
-	/* Offset and count into list of allow and deny rules. Any rules
-		prior to globalAllowRules and globalDenyRules are global rules. */
-	int rulesStart, rulesCount;
-};
-
 ServerInfo *seInfo = NULL;
 int seTotal = 0;
-
-typedef struct _socket Socket;
-struct _socket
-{
-	SOCKET fd;
-	/* recv: received on this socket
-		sent: sent to this socket from the other buffer */
-	int recvPos, sentPos;
-	int recvBytes, sentBytes;
-	char *buffer;
-};
-
-typedef struct _connection_info ConnectionInfo;
-struct _connection_info
-{
-	Socket remote, local;
-	struct in_addr reAddresses;
-	int coClosing;
-	int coLog;
-	int server; // only useful for logEvent
-};
 
 ConnectionInfo *coInfo = NULL;
 int coTotal = 0;
@@ -166,20 +107,6 @@ char *logFileName = NULL;
 char *pidLogFileName = NULL;
 int logFormatCommon = 0;
 FILE *logFile = NULL;
-
-static void selectPass(void);
-static void readConfiguration(void);
-
-/* Signal handlers */
-RETSIGTYPE plumber(int s);
-RETSIGTYPE hup(int s);
-RETSIGTYPE term(int s);
-
-void RegisterPID(void);
-
-void logEvent(ConnectionInfo const *cnx, int i, int result);
-
-static int getAddress(char const *host, struct in_addr *iaddr);
 
 char const *logMessages[] = {
 	"done-local-closed",
@@ -215,23 +142,33 @@ enum
 	logRemoteClosedFirst = 1,
 };
 
-/* Option parsing */
-
-typedef struct _rinetd_options RinetdOptions;
-struct _rinetd_options
-{
-	char const *conf_file;
-	int foreground;
-};
-
 RinetdOptions options = {
 	RINETD_CONFIG_FILE,
 	0,
 };
 
-int readArgs (int argc,
-	char **argv,
-	RinetdOptions *options);
+static int getAddress(char const *host, struct in_addr *iaddr);
+static void selectPass(void);
+static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
+static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
+static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
+static void handleAccept(int i);
+static void refuse(ConnectionInfo *cnx, int logCode);
+
+static int readArgs (int argc, char **argv, RinetdOptions *options);
+static int getConfLine(FILE *in, char *line, int space, int *lnum);
+static int patternBad(char const *pattern);
+static void readConfiguration(void);
+
+static void registerPID(void);
+static void logEvent(ConnectionInfo const *cnx, int i, int result);
+static struct tm *get_gmtoff(int *tz);
+
+/* Signal handlers */
+static RETSIGTYPE plumber(int s);
+static RETSIGTYPE hup(int s);
+static RETSIGTYPE term(int s);
+
 
 int main(int argc, char *argv[])
 {
@@ -275,7 +212,7 @@ int main(int argc, char *argv[])
 #endif /* WIN32 */
 			signal(SIGTERM, term);
 			readConfiguration();
-			RegisterPID();
+			registerPID();
 			syslog(LOG_INFO, "Starting redirections...");
 			while (1) {
 				selectPass();
@@ -289,9 +226,6 @@ int main(int argc, char *argv[])
 #endif /* WIN32 */
 	return 0;
 }
-
-static int getConfLine(FILE *in, char *line, int space, int *lnum);
-static int patternBad(char const *pattern);
 
 static void readConfiguration(void)
 {
@@ -608,11 +542,6 @@ static ConnectionInfo *findAvailableConnection()
 	return &coInfo[oldTotal];
 }
 
-static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
-static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
-static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
-static void handleAccept(int i);
-
 static void selectPass(void) {
 
 	int const fdSetCount = maxfd / FD_SETSIZE + 1;
@@ -764,9 +693,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	}
 }
 
-void refuse(ConnectionInfo *cnx, int logCode);
-
-void handleAccept(int i)
+static void handleAccept(int i)
 {
 	ConnectionInfo *cnx = findAvailableConnection();
 	if (!cnx) {
@@ -935,6 +862,15 @@ void handleAccept(int i)
 	logEvent(cnx, cnx->server, logOpened);
 }
 
+static void refuse(ConnectionInfo *cnx, int logCode)
+{
+	/* Local fd is not open yet when we refuse(), so only
+		close the remote socket. */
+	closesocket(cnx->remote.fd);
+	cnx->remote.fd = INVALID_SOCKET;
+	logEvent(cnx, cnx->server, logCode);
+}
+
 static int getAddress(char const *host, struct in_addr *iaddr)
 {
 	/* If this is an IP address, use inet_addr() */
@@ -1017,7 +953,7 @@ RETSIGTYPE term(int s)
 	exit(0);
 }
 
-void RegisterPID(void)
+void registerPID(void)
 {
 	char const *pid_file_name = RINETD_PID_FILE;
 	if (pidLogFileName) {
@@ -1044,12 +980,10 @@ error:
 #endif	/* __linux__ */
 }
 
-static struct in_addr const nullAddress = { 0 };
-
-struct tm *get_gmtoff(int *tz);
-
-void logEvent(ConnectionInfo const *cnx, int i, int result)
+static void logEvent(ConnectionInfo const *cnx, int i, int result)
 {
+	static struct in_addr const nullAddress = { 0 };
+
 	ServerInfo const *srv = &seInfo[i];
 	/* Bit of borrowing from Apache logging module here,
 		thanks folks */
@@ -1120,9 +1054,7 @@ void logEvent(ConnectionInfo const *cnx, int i, int result)
 	}
 }
 
-int readArgs (int argc,
-	char **argv,
-	RinetdOptions *options)
+static int readArgs (int argc, char **argv, RinetdOptions *options)
 {
 	for (;;) {
 		int option_index = 0;
@@ -1176,7 +1108,7 @@ int readArgs (int argc,
 
 /* get_gmtoff was borrowed from Apache. Thanks folks. */
 
-struct tm *get_gmtoff(int *tz) {
+static struct tm *get_gmtoff(int *tz) {
 	time_t tt = time(NULL);
 	struct tm gmt;
 	struct tm *t;
@@ -1201,14 +1133,5 @@ static int patternBad(char const *pattern)
 		}
 	}
 	return 0;
-}
-
-void refuse(ConnectionInfo *cnx, int logCode)
-{
-	/* Local fd is not open yet when we refuse(), so only
-		close the remote socket. */
-	closesocket(cnx->remote.fd);
-	cnx->remote.fd = INVALID_SOCKET;
-	logEvent(cnx, cnx->server, logCode);
 }
 
