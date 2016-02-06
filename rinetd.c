@@ -616,10 +616,10 @@ void openLocalFd(int se, ConnectionInfo *cnx);
 
 static void selectPass(void) {
 
-	int const fdSetCount = maxfd / __FD_SETSIZE + 1;
+	int const fdSetCount = maxfd / FD_SETSIZE + 1;
 #	define FD_ZERO_EXT(ar) for (int i = 0; i < fdSetCount; ++i) { FD_ZERO(&(ar)[i]); }
-#	define FD_SET_EXT(fd, ar) FD_SET((fd) % __FD_SETSIZE, &(ar)[(fd) / __FD_SETSIZE])
-#	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % __FD_SETSIZE, &(ar)[(fd) / __FD_SETSIZE])
+#	define FD_SET_EXT(fd, ar) FD_SET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
+#	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
 
 	fd_set readfds[fdSetCount], writefds[fdSetCount];
 	FD_ZERO_EXT(readfds);
