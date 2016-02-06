@@ -124,7 +124,6 @@ struct _connection_info
 	int inputRPos, inputWPos;
 	int outputRPos, outputWPos;
 	int bytesInput, bytesOutput;
-	int coClosed;
 	int coClosing;
 	int coLog;
 	int server; // only useful for logEvent
@@ -588,7 +587,8 @@ void allocConnections(int count)
 
 	for (int i = coTotal; i < coTotal + count; ++i) {
 		ConnectionInfo *cnx = &newCoInfo[i];
-		cnx->coClosed = 1;
+		cnx->loFd = INVALID_SOCKET;
+		cnx->reFd = INVALID_SOCKET;
 		cnx->input = (char *) malloc(sizeof(char) * 2 * bufferSpace);
 		if (!cnx->input) {
 			while (i-- >= coTotal) {
@@ -633,9 +633,6 @@ static void selectPass(void) {
 	/* Connection sockets */
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
-		if (cnx->coClosed) {
-			continue;
-		}
 		if (cnx->coClosing) {
 			if (cnx->reFd != INVALID_SOCKET) {
 				FD_SET_EXT(cnx->reFd, writefds);
@@ -673,9 +670,6 @@ static void selectPass(void) {
 	}
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
-		if (cnx->coClosed) {
-			continue;
-		}
 		if (cnx->reFd != INVALID_SOCKET) {
 			if (FD_ISSET_EXT(cnx->reFd, readfds)) {
 				handleRemoteRead(cnx);
@@ -695,9 +689,6 @@ static void selectPass(void) {
 			if (FD_ISSET_EXT(cnx->loFd, writefds)) {
 				handleLocalWrite(cnx);
 			}
-		}
-		if (cnx->loFd == INVALID_SOCKET && cnx->reFd == INVALID_SOCKET) {
-			cnx->coClosed = 1;
 		}
 	}
 }
@@ -729,7 +720,6 @@ void handleRemoteRead(ConnectionInfo *cnx)
 void handleRemoteWrite(ConnectionInfo *cnx)
 {
 	if (cnx->coClosing && (cnx->outputWPos == cnx->outputRPos)) {
-		cnx->coClosed = 1;
 		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, logDone | cnx->coLog);
 		closesocket(cnx->reFd);
@@ -781,7 +771,6 @@ void handleLocalRead(ConnectionInfo *cnx)
 void handleLocalWrite(ConnectionInfo *cnx)
 {
 	if (cnx->coClosing && (cnx->inputWPos == cnx->inputRPos)) {
-		cnx->coClosed = 1;
 		PERROR("remote closed and no more input");
 		logEvent(cnx, cnx->server, logDone | cnx->coLog);
 		closesocket(cnx->loFd);
@@ -892,7 +881,8 @@ void handleAccept(int i)
 
 	/* Find an existing closed connection to reuse */
 	for (int j = 0; j < coTotal; ++j) {
-		if (coInfo[j].coClosed) {
+		if (coInfo[j].loFd == INVALID_SOCKET
+			&& coInfo[j].reFd == INVALID_SOCKET) {
 			cnx = &coInfo[j];
 			break;
 		}
@@ -915,7 +905,6 @@ void handleAccept(int i)
 	cnx->inputWPos = 0;
 	cnx->outputRPos = 0;
 	cnx->outputWPos = 0;
-	cnx->coClosed = 0;
 	cnx->coClosing = 0;
 	cnx->loFd = INVALID_SOCKET;
 	cnx->reFd = nfd;
@@ -988,7 +977,6 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 		syslog(LOG_ERR, "socket(): %m");
 		closesocket(cnx->reFd);
 		cnx->reFd = INVALID_SOCKET;
-		cnx->coClosed = 1;
 		logEvent(cnx, cnx->server, logLocalSocketFailed);
 		return;
 	}
@@ -1008,7 +996,6 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 		closesocket(cnx->reFd);
 		cnx->reFd = INVALID_SOCKET;
 		cnx->loFd = INVALID_SOCKET;
-		cnx->coClosed = 1;
 		logEvent(cnx, cnx->server, logLocalBindFailed);
 		return;
 	}
@@ -1043,7 +1030,6 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 			closesocket(cnx->reFd);
 			cnx->reFd = INVALID_SOCKET;
 			cnx->loFd = INVALID_SOCKET;
-			cnx->coClosed = 1;
 			logEvent(cnx, cnx->server, logLocalConnectFailed);
 			return;
 		}
@@ -1318,7 +1304,6 @@ void refuse(ConnectionInfo *cnx, int logCode)
 		close the remote socket. */
 	closesocket(cnx->reFd);
 	cnx->reFd = INVALID_SOCKET;
-	cnx->coClosed = 1;
 	logEvent(cnx, cnx->server, logCode);
 }
 
