@@ -152,7 +152,6 @@ static void refuse(ConnectionInfo *cnx, int logCode);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
 static int getConfLine(FILE *in, char *line, int space, int *lnum);
-static int patternBad(char const *pattern);
 static void clearConfiguration(void);
 static void readConfiguration(void);
 
@@ -278,7 +277,13 @@ static void readConfiguration(void) {
 					"specified on file %s, line %d.\n", bindAddress, options.conf_file, lnum);
 				continue;
 			}
-			if (patternBad(pattern)) {
+			int bad = 0;
+			for (char const *p = pattern; *p; ++p) {
+				if (!strchr("0123456789?*.", *p)) {
+					bad = 1;
+				}
+			}
+			if (bad) {
 				syslog(LOG_ERR, "illegal allow or "
 					"deny pattern. Only digits, ., and\n"
 					"the ? and * wild cards are allowed. "
@@ -1140,15 +1145,5 @@ static struct tm *get_gmtoff(int *tz) {
 	minutes = hours * 60 + t->tm_min - gmt.tm_min;
 	*tz = minutes;
 	return t;
-}
-
-static int patternBad(char const *pattern)
-{
-	for (char const *p = pattern; *p; ++p) {
-		if (!isdigit(*p) && !strchr("?*.", *p)) {
-			return 1;
-		}
-	}
-	return 0;
 }
 
