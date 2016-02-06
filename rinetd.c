@@ -110,7 +110,7 @@ struct _server_info
 	int allowRulesTotal, denyRulesTotal;
 };
 
-ServerInfo *seInfo = 0;
+ServerInfo *seInfo = NULL;
 int seTotal = 0;
 
 int globalAllowRules = 0;
@@ -136,16 +136,16 @@ struct _connection_info
 ConnectionInfo *coInfo = NULL;
 int coTotal = 0;
 
-char **allowRules = 0;
-char **denyRules = 0;
-int *denyRulesFor = 0;
+char **allowRules = NULL;
+char **denyRules = NULL;
+int *denyRulesFor = NULL;
 int allowRulesTotal = 0;
 int denyRulesTotal = 0;
 int maxfd = 0;
-char *logFileName = 0;
-char *pidLogFileName = 0;
+char *logFileName = NULL;
+char *pidLogFileName = NULL;
 int logFormatCommon = 0;
-FILE *logFile = 0;
+FILE *logFile = NULL;
 
 /*
 	se: (se)rver sockets
@@ -288,51 +288,40 @@ static void readConfiguration(void)
 {
 	FILE *in;
 	char line[16384];
-	if (seInfo) {
-		/* Close existing server sockets. */
-		for (int i = 0; i < seTotal; ++i) {
-			ServerInfo *srv = &seInfo[i];
-			if (srv->fd != INVALID_SOCKET) {
-				closesocket(srv->fd);
-				free(srv->fromHost);
-				free(srv->toHost);
-			}
+	/* Close existing server sockets. */
+	for (int i = 0; i < seTotal; ++i) {
+		ServerInfo *srv = &seInfo[i];
+		if (srv->fd != INVALID_SOCKET) {
+			closesocket(srv->fd);
+			free(srv->fromHost);
+			free(srv->toHost);
 		}
-		/* Free memory associated with previous set. */
-		free(seInfo);
-		seInfo = NULL;
 	}
+	/* Free memory associated with previous set. */
+	free(seInfo);
+	seInfo = NULL;
 	seTotal = 0;
-	if (allowRules) {
-		/* Forget existing allow rules. */
-		for (int i = 0; i < allowRulesTotal; ++i) {
-			free(allowRules[i]);
-		}
-		/* Free memory associated with previous set. */
-		free(allowRules);
-		allowRules = NULL;
-		globalAllowRules = 0;
+	/* Forget existing allow rules. */
+	for (int i = 0; i < allowRulesTotal; ++i) {
+		free(allowRules[i]);
 	}
-	allowRulesTotal = 0;
-	if (denyRules) {
-		/* Forget existing deny rules. */
-		for (int i = 0; i < denyRulesTotal; ++i) {
-			free(denyRules[i]);
-		}
-		/* Free memory associated with previous set. */
-		free(denyRules);
-		denyRules = NULL;
-		globalDenyRules = 0;
+	/* Free memory associated with previous set. */
+	free(allowRules);
+	allowRules = NULL;
+	globalAllowRules = allowRulesTotal = 0;
+	/* Forget existing deny rules. */
+	for (int i = 0; i < denyRulesTotal; ++i) {
+		free(denyRules[i]);
 	}
-	denyRulesTotal = 0;
-	if (logFileName) {
-		free(logFileName);
-		logFileName = NULL;
-	}
-	if (pidLogFileName) {
-		free(pidLogFileName);
-		pidLogFileName = NULL;
-	}
+	/* Free memory associated with previous set. */
+	free(denyRules);
+	denyRules = NULL;
+	globalDenyRules = denyRulesTotal = 0;
+	/* Free file names */
+	free(logFileName);
+	logFileName = NULL;
+	free(pidLogFileName);
+	pidLogFileName = NULL;
 	/* Parse the configuration file. */
 	in = fopen(options.conf_file, "r");
 	if (!in) {
@@ -548,7 +537,7 @@ static void readConfiguration(void)
 	/* Open the log file */
 	if (logFile) {
 		fclose(logFile);
-		logFile = 0;
+		logFile = NULL;
 	}
 	if (logFileName) {
 		logFile = fopen(logFileName, "a");
@@ -719,17 +708,11 @@ static void selectPass(void) {
 
 void handleRemoteRead(ConnectionInfo *cnx)
 {
-	int got;
 	if (bufferSpace == cnx->inputRPos) {
 		return;
 	}
-	got = recv(cnx->reFd, cnx->input + cnx->inputRPos,
+	int got = recv(cnx->reFd, cnx->input + cnx->inputRPos,
 		bufferSpace - cnx->inputRPos, 0);
-	if (got == 0) {
-		/* Prepare for closing */
-		handleCloseFromRemote(cnx);
-		return;
-	}
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -737,6 +720,9 @@ void handleRemoteRead(ConnectionInfo *cnx)
 		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
+	}
+	if (got <= 0) {
+		/* Prepare for closing */
 		handleCloseFromRemote(cnx);
 		return;
 	}
@@ -746,7 +732,6 @@ void handleRemoteRead(ConnectionInfo *cnx)
 
 void handleRemoteWrite(ConnectionInfo *cnx)
 {
-	int got;
 	if (cnx->coClosing && (cnx->outputWPos == cnx->outputRPos)) {
 		cnx->reClosed = 1;
 		cnx->coClosed = 1;
@@ -755,7 +740,7 @@ void handleRemoteWrite(ConnectionInfo *cnx)
 		closesocket(cnx->reFd);
 		return;
 	}
-	got = send(cnx->reFd, cnx->output + cnx->outputWPos,
+	int got = send(cnx->reFd, cnx->output + cnx->outputWPos,
 		cnx->outputRPos - cnx->outputWPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
@@ -777,16 +762,11 @@ void handleRemoteWrite(ConnectionInfo *cnx)
 
 void handleLocalRead(ConnectionInfo *cnx)
 {
-	int got;
 	if (bufferSpace == cnx->outputRPos) {
 		return;
 	}
-	got = recv(cnx->loFd, cnx->output + cnx->outputRPos,
+	int got = recv(cnx->loFd, cnx->output + cnx->outputRPos,
 		bufferSpace - cnx->outputRPos, 0);
-	if (got == 0) {
-		handleCloseFromLocal(cnx);
-		return;
-	}
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -794,6 +774,8 @@ void handleLocalRead(ConnectionInfo *cnx)
 		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
+	}
+	if (got <= 0) {
 		handleCloseFromLocal(cnx);
 		return;
 	}
@@ -802,7 +784,6 @@ void handleLocalRead(ConnectionInfo *cnx)
 
 void handleLocalWrite(ConnectionInfo *cnx)
 {
-	int got;
 	if (cnx->coClosing && (cnx->inputWPos == cnx->inputRPos)) {
 		cnx->loClosed = 1;
 		cnx->coClosed = 1;
@@ -811,7 +792,7 @@ void handleLocalWrite(ConnectionInfo *cnx)
 		closesocket(cnx->loFd);
 		return;
 	}
-	got = send(cnx->loFd, cnx->input + cnx->inputWPos,
+	int got = send(cnx->loFd, cnx->input + cnx->inputWPos,
 		cnx->inputRPos - cnx->inputWPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
@@ -956,53 +937,47 @@ void handleAccept(int i)
 		global allow rules, it's presumed OK at
 		this step. If there are any, and it doesn't
 		match at least one, kick it out. */
-	if (globalAllowRules) {
-		int good = 0;
-		for (int j = 0; j < globalAllowRules; ++j) {
-			if (match(addressText, allowRules[j])) {
-				good = 1;
-				break;
-			}
+	int good = 1;
+	for (int j = 0; j < globalAllowRules; ++j) {
+		good = 0;
+		if (match(addressText, allowRules[j])) {
+			good = 1;
+			break;
 		}
-		if (!good) {
-			refuse(cnx, logNotAllowed);
-			return;
-		}
+	}
+	if (!good) {
+		refuse(cnx, logNotAllowed);
+		return;
 	}
 	/* 2. Check global deny rules. If it matches
 		any of the global deny rules, kick it out. */
-	if (globalDenyRules) {
-		for (int j = 0; j < globalDenyRules; ++j) {
-			if (match(addressText, denyRules[j])) {
-				refuse(cnx, logDenied);
-			}
+	for (int j = 0; j < globalDenyRules; ++j) {
+		if (match(addressText, denyRules[j])) {
+			refuse(cnx, logDenied);
 		}
 	}
 	/* 3. Check allow rules specific to this forwarding rule.
 		If there are none, it's OK. If there are any,
 		it must match at least one. */
-	if (srv->allowRulesTotal) {
-		int good = 0;
-		for (int j = 0; j < srv->allowRulesTotal; ++j) {
-			if (match(addressText,
-				allowRules[srv->allowRules + j])) {
-				good = 1;
-				break;
-			}
-		}
-		if (!good) {
-			refuse(cnx, logNotAllowed);
-			return;
+	good = 1;
+	for (int j = 0; j < srv->allowRulesTotal; ++j) {
+		good = 0;
+		if (match(addressText,
+			allowRules[srv->allowRules + j])) {
+			good = 1;
+			break;
 		}
 	}
-	/* 2. Check deny rules specific to this forwarding rule. If
+	if (!good) {
+		refuse(cnx, logNotAllowed);
+		return;
+	}
+	/* 4. Check deny rules specific to this forwarding rule. If
 		it matches any of the deny rules, kick it out. */
-	if (srv->denyRulesTotal) {
-		for (int j = 0; j < srv->denyRulesTotal; ++j) {
-			if (match(addressText,
-				denyRules[srv->denyRules + j])) {
-				refuse(cnx, logDenied);
-			}
+	for (int j = 0; j < srv->denyRulesTotal; ++j) {
+		if (match(addressText,
+			denyRules[srv->denyRules + j])) {
+			refuse(cnx, logDenied);
 		}
 	}
 	/* Now open a connection to the local server.
@@ -1283,35 +1258,35 @@ int readArgs (int argc,
 		}
 		switch (c) {
 			case 'c':
-			options->conf_file = strdup(optarg);
-			if (!options->conf_file) {
-				syslog(LOG_ERR, "Not enough memory to "
-					"launch rinetd.\n");
-				exit(1);
-			}
-			break;
+				options->conf_file = strdup(optarg);
+				if (!options->conf_file) {
+					syslog(LOG_ERR, "Not enough memory to "
+						"launch rinetd.\n");
+					exit(1);
+				}
+				break;
 			case 'f':
-			options->foreground=1;
-			break;
+				options->foreground=1;
+				break;
 			case 'h':
-			printf("Usage: rinetd [OPTION]\n"
-				"  -c, --conf-file FILE   read configuration "
-				"from FILE\n"
-				"  -f, --foreground       do not run in the "
-				"background\n"
-				"  -h, --help             display this help\n"
-				"  -v, --version          display version "
-				"number\n\n");
-			printf("Most options are controlled through the\n"
-				"configuration file. See the rinetd(8)\n"
-				"manpage for more information.\n");
-			exit (0);
+				printf("Usage: rinetd [OPTION]\n"
+					"  -c, --conf-file FILE   read configuration "
+					"from FILE\n"
+					"  -f, --foreground       do not run in the "
+					"background\n"
+					"  -h, --help             display this help\n"
+					"  -v, --version          display version "
+					"number\n\n");
+				printf("Most options are controlled through the\n"
+					"configuration file. See the rinetd(8)\n"
+					"manpage for more information.\n");
+				exit (0);
 			case 'v':
-			printf ("rinetd %s\n", PACKAGE_VERSION);
-			exit (0);
+				printf ("rinetd %s\n", PACKAGE_VERSION);
+				exit (0);
 			case '?':
 			default:
-			exit (1);
+				exit (1);
 		}
 	}
 	return 0;
