@@ -333,7 +333,7 @@ static void readConfiguration(void)
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
-		char *bindAddress = strtok(line, " \t\r\n");
+		char const *bindAddress = strtok(line, " \t\r\n");
 		if (!bindAddress) {
 			syslog(LOG_ERR, "no bind address specified "
 				"on file %s, line %d.\n", options.conf_file, lnum);
@@ -341,7 +341,7 @@ static void readConfiguration(void)
 		}
 		if (!strcmp(bindAddress, "allow")
 			|| !strcmp(bindAddress, "deny")) {
-			char *pattern = strtok(0, " \t\r\n");
+			char const *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
 				syslog(LOG_ERR, "nothing to %s "
 					"specified on file %s, line %d.\n", bindAddress, options.conf_file, lnum);
@@ -377,7 +377,7 @@ static void readConfiguration(void)
 			}
 			++allRulesCount;
 		} else if (!strcmp(bindAddress, "logfile")) {
-			char *nt = strtok(0, " \t\r\n");
+			char const *nt = strtok(0, " \t\r\n");
 			if (!nt) {
 				syslog(LOG_ERR, "no log file name "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
@@ -388,7 +388,7 @@ static void readConfiguration(void)
 				goto lowMemory;
 			}
 		} else if (!strcmp(bindAddress, "pidlogfile")) {
-			char *nt = strtok(0, " \t\r\n");
+			char const *nt = strtok(0, " \t\r\n");
 			if (!nt) {
 				syslog(LOG_ERR, "no PID log file name "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
@@ -402,7 +402,7 @@ static void readConfiguration(void)
 			logFormatCommon = 1;
 		} else {
 			/* A regular forwarding rule. */
-			char *bindPortS = strtok(0, " \t\r\n");
+			char const *bindPortS = strtok(0, " \t\r\n");
 			if (!bindPortS) {
 				syslog(LOG_ERR, "no bind port "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
@@ -415,13 +415,13 @@ static void readConfiguration(void)
 					"or out of range on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			char *connectAddress = strtok(0, " \t\r\n");
+			char const *connectAddress = strtok(0, " \t\r\n");
 			if (!connectAddress) {
 				syslog(LOG_ERR, "no connect address "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
 				continue;
 			}
-			char *connectPortS = strtok(0, " \t\r\n");
+			char const *connectPortS = strtok(0, " \t\r\n");
 			if (!connectPortS) {
 				syslog(LOG_ERR, "no connect port "
 					"specified on file %s, line %d.\n", options.conf_file, lnum);
@@ -535,13 +535,12 @@ lowMemory:
 
 static int getConfLine(FILE *in, char *line, int space, int *lnum)
 {
-	char *p;
 	while (1) {
 		(*lnum)++;
 		if (!fgets(line, space, in)) {
 			return 0;
 		}
-		p = line;
+		char const *p = line;
 		while (isspace(*p)) {
 			p++;
 		}
