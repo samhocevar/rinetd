@@ -1,0 +1,21 @@
+sudo: false
+language: c
+env: VERBOSE=1
+
+addons:
+  apt:
+    packages:
+      - build-essential
+      - pkg-config
+
+before_install:
+  - ./bootstrap
+
+os:
+  - linux
+  - osx
+
+compiler:
+  - gcc
+  - clang
+

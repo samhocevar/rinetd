@@ -15,3 +15,6 @@ rinetd_SOURCES = rinetd.c match.c match.h
 # _GNU_SOURCE is for h_errno and gethostbyname-related macros
 rinetd_CFLAGS = -std=c99 -D_XOPEN_SOURCE -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wwrite-strings -I.
 
+# This is for Travis CI; we don’t have a testsuite yet.
+test:
+
