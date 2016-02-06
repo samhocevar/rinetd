@@ -280,9 +280,8 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-int getConfLine(FILE *in, char *line, int space, int *lnum);
-
-int patternBad(char *pattern);
+static int getConfLine(FILE *in, char *line, int space, int *lnum);
+static int patternBad(char const *pattern);
 
 static void readConfiguration(void)
 {
@@ -554,7 +553,7 @@ lowMemory:
 	exit(1);
 }
 
-int getConfLine(FILE *in, char *line, int space, int *lnum)
+static int getConfLine(FILE *in, char *line, int space, int *lnum)
 {
 	char *p;
 	while (1) {
@@ -1311,18 +1310,14 @@ struct tm *get_gmtoff(int *tz) {
 	return t;
 }
 
-int patternBad(char *pattern)
+static int patternBad(char const *pattern)
 {
-	char *p = pattern;
-	while (*p) {
-		if (isdigit(*p) || ((*p) == '?') || ((*p) == '*') ||
-			((*p) == '.'))
-		{
-			p++;
+	for (char const *p = pattern; *p; ++p) {
+		if (!isdigit(*p) && !strchr("?*.", *p)) {
+			return 1;
 		}
-		return 0;
 	}
-	return 1;
+	return 0;
 }
 
 void refuse(ConnectionInfo *cnx, int logCode)
