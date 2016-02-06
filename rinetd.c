@@ -137,18 +137,25 @@ struct _server_info {
 ServerInfo *seInfo = NULL;
 int seTotal = 0;
 
+typedef struct _socket Socket;
+struct _socket
+{
+	SOCKET fd;
+	/* recv: received on this socket
+		sent: sent to this socket from the other buffer */
+	int recvPos, sentPos;
+	int recvBytes, sentBytes;
+	char *buffer;
+};
+
 typedef struct _connection_info ConnectionInfo;
 struct _connection_info
 {
-	SOCKET reFd, loFd;
+	Socket remote, local;
 	struct in_addr reAddresses;
-	int inputRPos, inputWPos;
-	int outputRPos, outputWPos;
-	int bytesInput, bytesOutput;
 	int coClosing;
 	int coLog;
 	int server; // only useful for logEvent
-	char *input, *output;
 };
 
 ConnectionInfo *coInfo = NULL;
@@ -569,17 +576,17 @@ void allocConnections(int count)
 
 	for (int i = coTotal; i < coTotal + count; ++i) {
 		ConnectionInfo *cnx = &newCoInfo[i];
-		cnx->loFd = INVALID_SOCKET;
-		cnx->reFd = INVALID_SOCKET;
-		cnx->input = (char *) malloc(sizeof(char) * 2 * RINETD_BUFFER_SIZE);
-		if (!cnx->input) {
+		cnx->local.fd = INVALID_SOCKET;
+		cnx->remote.fd = INVALID_SOCKET;
+		cnx->local.buffer = (char *) malloc(sizeof(char) * 2 * RINETD_BUFFER_SIZE);
+		if (!cnx->local.buffer) {
 			while (i-- >= coTotal) {
-				free(newCoInfo[i].input);
+				free(newCoInfo[i].local.buffer);
 			}
 			free(newCoInfo);
 			return;
 		}
-		cnx->output = cnx->input + RINETD_BUFFER_SIZE;
+		cnx->remote.buffer = cnx->local.buffer + RINETD_BUFFER_SIZE;
 	}
 
 	free(coInfo);
@@ -614,31 +621,27 @@ static void selectPass(void) {
 	/* Connection sockets */
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
-		if (cnx->coClosing) {
-			if (cnx->reFd != INVALID_SOCKET) {
-				FD_SET_EXT(cnx->reFd, writefds);
+		if (cnx->local.fd != INVALID_SOCKET) {
+			/* Accept more output from the local
+				server if there's room */
+			if (cnx->local.recvPos < RINETD_BUFFER_SIZE) {
+				FD_SET_EXT(cnx->local.fd, readfds);
 			}
-			if (cnx->loFd != INVALID_SOCKET) {
-				FD_SET_EXT(cnx->loFd, writefds);
+			/* Send more input to the local server
+				if we have any, or if we’re closing */
+			if (cnx->local.sentPos < cnx->remote.recvPos || cnx->coClosing) {
+				FD_SET_EXT(cnx->local.fd, writefds);
 			}
 		}
-		/* Get more input if we have room for it */
-		if (cnx->reFd != INVALID_SOCKET && (cnx->inputRPos < RINETD_BUFFER_SIZE)) {
-			FD_SET_EXT(cnx->reFd, readfds);
-		}
-		/* Send more output if we have any */
-		if (cnx->reFd != INVALID_SOCKET && (cnx->outputWPos < cnx->outputRPos)) {
-			FD_SET_EXT(cnx->reFd, writefds);
-		}
-		/* Accept more output from the local
-			server if there's room */
-		if (cnx->loFd != INVALID_SOCKET && (cnx->outputRPos < RINETD_BUFFER_SIZE)) {
-			FD_SET_EXT(cnx->loFd, readfds);
-		}
-		/* Send more input to the local server
-			if we have any */
-		if (cnx->loFd != INVALID_SOCKET && (cnx->inputWPos < cnx->inputRPos)) {
-			FD_SET_EXT(cnx->loFd, writefds);
+		if (cnx->remote.fd != INVALID_SOCKET) {
+			/* Get more input if we have room for it */
+			if (cnx->remote.recvPos < RINETD_BUFFER_SIZE) {
+				FD_SET_EXT(cnx->remote.fd, readfds);
+			}
+			/* Send more output if we have any, or if we’re closing */
+			if (cnx->remote.sentPos < cnx->local.recvPos || cnx->coClosing) {
+				FD_SET_EXT(cnx->remote.fd, writefds);
+			}
 		}
 	}
 	select(maxfd + 1, readfds, writefds, 0, 0);
@@ -651,23 +654,23 @@ static void selectPass(void) {
 	}
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
-		if (cnx->reFd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(cnx->reFd, readfds)) {
+		if (cnx->remote.fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
 				handleRemoteRead(cnx);
 			}
 		}
-		if (cnx->reFd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(cnx->reFd, writefds)) {
+		if (cnx->remote.fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(cnx->remote.fd, writefds)) {
 				handleRemoteWrite(cnx);
 			}
 		}
-		if (cnx->loFd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(cnx->loFd, readfds)) {
+		if (cnx->local.fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(cnx->local.fd, readfds)) {
 				handleLocalRead(cnx);
 			}
 		}
-		if (cnx->loFd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(cnx->loFd, writefds)) {
+		if (cnx->local.fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(cnx->local.fd, writefds)) {
 				handleLocalWrite(cnx);
 			}
 		}
@@ -676,11 +679,11 @@ static void selectPass(void) {
 
 void handleRemoteRead(ConnectionInfo *cnx)
 {
-	if (RINETD_BUFFER_SIZE == cnx->inputRPos) {
+	if (RINETD_BUFFER_SIZE == cnx->remote.recvPos) {
 		return;
 	}
-	int got = recv(cnx->reFd, cnx->input + cnx->inputRPos,
-		RINETD_BUFFER_SIZE - cnx->inputRPos, 0);
+	int got = recv(cnx->remote.fd, cnx->remote.buffer + cnx->remote.recvPos,
+		RINETD_BUFFER_SIZE - cnx->remote.recvPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -691,49 +694,20 @@ void handleRemoteRead(ConnectionInfo *cnx)
 	}
 	if (got <= 0) {
 		/* Prepare for closing */
-		handleClose(cnx, &cnx->reFd, &cnx->loFd, logRemoteClosedFirst);
+		handleClose(cnx, &cnx->remote.fd, &cnx->local.fd, logRemoteClosedFirst);
 		return;
 	}
-	cnx->bytesInput += got;
-	cnx->inputRPos += got;
-}
-
-void handleRemoteWrite(ConnectionInfo *cnx)
-{
-	if (cnx->coClosing && (cnx->outputWPos == cnx->outputRPos)) {
-		PERROR("rinetd: local closed and no more output");
-		logEvent(cnx, cnx->server, logDone | cnx->coLog);
-		closesocket(cnx->reFd);
-		cnx->reFd = INVALID_SOCKET;
-		return;
-	}
-	int got = send(cnx->reFd, cnx->output + cnx->outputWPos,
-		cnx->outputRPos - cnx->outputWPos, 0);
-	if (got < 0) {
-		if (GetLastError() == WSAEWOULDBLOCK) {
-			return;
-		}
-		if (GetLastError() == WSAEINPROGRESS) {
-			return;
-		}
-		handleClose(cnx, &cnx->reFd, &cnx->loFd, logRemoteClosedFirst);
-		return;
-	}
-	cnx->outputWPos += got;
-	if (cnx->outputWPos == cnx->outputRPos) {
-		cnx->outputWPos = 0;
-		cnx->outputRPos = 0;
-	}
-	cnx->bytesOutput += got;
+	cnx->remote.recvBytes += got;
+	cnx->remote.recvPos += got;
 }
 
 void handleLocalRead(ConnectionInfo *cnx)
 {
-	if (RINETD_BUFFER_SIZE == cnx->outputRPos) {
+	if (RINETD_BUFFER_SIZE == cnx->local.recvPos) {
 		return;
 	}
-	int got = recv(cnx->loFd, cnx->output + cnx->outputRPos,
-		RINETD_BUFFER_SIZE - cnx->outputRPos, 0);
+	int got = recv(cnx->local.fd, cnx->local.buffer + cnx->local.recvPos,
+		RINETD_BUFFER_SIZE - cnx->local.recvPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -743,23 +717,23 @@ void handleLocalRead(ConnectionInfo *cnx)
 		}
 	}
 	if (got <= 0) {
-		handleClose(cnx, &cnx->loFd, &cnx->reFd, logLocalClosedFirst);
+		handleClose(cnx, &cnx->local.fd, &cnx->remote.fd, logLocalClosedFirst);
 		return;
 	}
-	cnx->outputRPos += got;
+	cnx->local.recvPos += got;
 }
 
-void handleLocalWrite(ConnectionInfo *cnx)
+void handleRemoteWrite(ConnectionInfo *cnx)
 {
-	if (cnx->coClosing && (cnx->inputWPos == cnx->inputRPos)) {
-		PERROR("remote closed and no more input");
+	if (cnx->coClosing && (cnx->remote.sentPos == cnx->local.recvPos)) {
+		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, logDone | cnx->coLog);
-		closesocket(cnx->loFd);
-		cnx->loFd = INVALID_SOCKET;
+		closesocket(cnx->remote.fd);
+		cnx->remote.fd = INVALID_SOCKET;
 		return;
 	}
-	int got = send(cnx->loFd, cnx->input + cnx->inputWPos,
-		cnx->inputRPos - cnx->inputWPos, 0);
+	int got = send(cnx->remote.fd, cnx->local.buffer + cnx->remote.sentPos,
+		cnx->local.recvPos - cnx->remote.sentPos, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -767,13 +741,42 @@ void handleLocalWrite(ConnectionInfo *cnx)
 		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
-		handleClose(cnx, &cnx->loFd, &cnx->reFd, logLocalClosedFirst);
+		handleClose(cnx, &cnx->remote.fd, &cnx->local.fd, logRemoteClosedFirst);
 		return;
 	}
-	cnx->inputWPos += got;
-	if (cnx->inputWPos == cnx->inputRPos) {
-		cnx->inputWPos = 0;
-		cnx->inputRPos = 0;
+	cnx->remote.sentPos += got;
+	if (cnx->remote.sentPos == cnx->local.recvPos) {
+		cnx->remote.sentPos = 0;
+		cnx->local.recvPos = 0;
+	}
+	cnx->remote.sentBytes += got;
+}
+
+void handleLocalWrite(ConnectionInfo *cnx)
+{
+	if (cnx->coClosing && (cnx->local.sentPos == cnx->remote.recvPos)) {
+		PERROR("remote closed and no more input");
+		logEvent(cnx, cnx->server, logDone | cnx->coLog);
+		closesocket(cnx->local.fd);
+		cnx->local.fd = INVALID_SOCKET;
+		return;
+	}
+	int got = send(cnx->local.fd, cnx->remote.buffer + cnx->local.sentPos,
+		cnx->remote.recvPos - cnx->local.sentPos, 0);
+	if (got < 0) {
+		if (GetLastError() == WSAEWOULDBLOCK) {
+			return;
+		}
+		if (GetLastError() == WSAEINPROGRESS) {
+			return;
+		}
+		handleClose(cnx, &cnx->local.fd, &cnx->remote.fd, logLocalClosedFirst);
+		return;
+	}
+	cnx->local.sentPos += got;
+	if (cnx->local.sentPos == cnx->remote.recvPos) {
+		cnx->local.sentPos = 0;
+		cnx->remote.recvPos = 0;
 	}
 }
 
@@ -835,8 +838,8 @@ void handleAccept(int i)
 
 	/* Find an existing closed connection to reuse */
 	for (int j = 0; j < coTotal; ++j) {
-		if (coInfo[j].loFd == INVALID_SOCKET
-			&& coInfo[j].reFd == INVALID_SOCKET) {
+		if (coInfo[j].local.fd == INVALID_SOCKET
+			&& coInfo[j].remote.fd == INVALID_SOCKET) {
 			cnx = &coInfo[j];
 			break;
 		}
@@ -855,15 +858,15 @@ void handleAccept(int i)
 		cnx = &coInfo[oldTotal];
 	}
 
-	cnx->inputRPos = 0;
-	cnx->inputWPos = 0;
-	cnx->outputRPos = 0;
-	cnx->outputWPos = 0;
+	cnx->remote.recvPos = 0;
+	cnx->local.sentPos = 0;
+	cnx->local.recvPos = 0;
+	cnx->remote.sentPos = 0;
 	cnx->coClosing = 0;
-	cnx->loFd = INVALID_SOCKET;
-	cnx->reFd = nfd;
-	cnx->bytesInput = 0;
-	cnx->bytesOutput = 0;
+	cnx->local.fd = INVALID_SOCKET;
+	cnx->remote.fd = nfd;
+	cnx->remote.recvBytes = 0;
+	cnx->remote.sentBytes = 0;
 	cnx->coLog = 0;
 	cnx->server = i;
 	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
@@ -931,17 +934,17 @@ void handleAccept(int i)
 void openLocalFd(int se, ConnectionInfo *cnx)
 {
 	struct sockaddr_in saddr;
-	cnx->loFd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (cnx->loFd == INVALID_SOCKET) {
+	cnx->local.fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m");
-		closesocket(cnx->reFd);
-		cnx->reFd = INVALID_SOCKET;
+		closesocket(cnx->remote.fd);
+		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, cnx->server, logLocalSocketFailed);
 		return;
 	}
 #ifndef WIN32
-	if (cnx->loFd > maxfd) {
-		maxfd = cnx->loFd;
+	if (cnx->local.fd > maxfd) {
+		maxfd = cnx->local.fd;
 	}
 #endif /* WIN32 */
 
@@ -950,11 +953,11 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = INADDR_ANY;
 	saddr.sin_addr.s_addr = 0;
-	if (bind(cnx->loFd, (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
-		closesocket(cnx->loFd);
-		closesocket(cnx->reFd);
-		cnx->reFd = INVALID_SOCKET;
-		cnx->loFd = INVALID_SOCKET;
+	if (bind(cnx->local.fd, (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
+		closesocket(cnx->local.fd);
+		closesocket(cnx->remote.fd);
+		cnx->remote.fd = INVALID_SOCKET;
+		cnx->local.fd = INVALID_SOCKET;
 		logEvent(cnx, cnx->server, logLocalBindFailed);
 		return;
 	}
@@ -969,26 +972,26 @@ void openLocalFd(int se, ConnectionInfo *cnx)
 #ifndef WIN32
 #ifdef __linux__
 	tmp = 0;
-	setsockopt(cnx->loFd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #else
 	tmp = 1024;
-	setsockopt(cnx->loFd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
+	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
 #endif /* __linux__ */
 #endif /* WIN32 */
 	tmp = 1;
-	ioctlsocket(cnx->loFd, FIONBIO, &tmp);
+	ioctlsocket(cnx->local.fd, FIONBIO, &tmp);
 
-	if (connect(cnx->loFd, (struct sockaddr *)&saddr,
+	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == INVALID_SOCKET)
 	{
 		if ((GetLastError() != WSAEINPROGRESS) &&
 			(GetLastError() != WSAEWOULDBLOCK))
 		{
 			PERROR("rinetd: connect");
-			closesocket(cnx->loFd);
-			closesocket(cnx->reFd);
-			cnx->reFd = INVALID_SOCKET;
-			cnx->loFd = INVALID_SOCKET;
+			closesocket(cnx->local.fd);
+			closesocket(cnx->remote.fd);
+			cnx->remote.fd = INVALID_SOCKET;
+			cnx->local.fd = INVALID_SOCKET;
 			logEvent(cnx, cnx->server, logLocalConnectFailed);
 			return;
 		}
@@ -1128,8 +1131,8 @@ void logEvent(ConnectionInfo const *cnx, int i, int result)
 	int bytesInput = 0;
 	if (cnx != NULL) {
 		reAddress = &cnx->reAddresses;
-		bytesOutput = cnx->bytesOutput;
-		bytesInput = cnx->bytesInput;
+		bytesOutput = cnx->remote.sentBytes;
+		bytesInput = cnx->remote.recvBytes;
 	}
 	char const *addressText = inet_ntoa(*reAddress);
 
@@ -1268,8 +1271,8 @@ void refuse(ConnectionInfo *cnx, int logCode)
 {
 	/* Local fd is not open yet when we refuse(), so only
 		close the remote socket. */
-	closesocket(cnx->reFd);
-	cnx->reFd = INVALID_SOCKET;
+	closesocket(cnx->remote.fd);
+	cnx->remote.fd = INVALID_SOCKET;
 	logEvent(cnx, cnx->server, logCode);
 }
 
