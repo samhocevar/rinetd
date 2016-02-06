@@ -101,9 +101,24 @@ static int const RINETD_LISTEN_BACKLOG = 128;
 
 /* Program state */
 
-typedef struct _server_info ServerInfo;
-struct _server_info
+enum ruleType {
+	allowRule,
+	denyRule,
+};
+
+typedef struct _rule Rule;
+struct _rule
 {
+	char *pattern;
+	int type;
+};
+
+Rule *allRules = NULL;
+int allRulesCount = 0;
+int globalRulesCount = 0;
+
+typedef struct _server_info ServerInfo;
+struct _server_info {
 	SOCKET fd;
 
 	/* In network order, for network purposes */
@@ -114,17 +129,13 @@ struct _server_info
 	char *fromHost, *toHost;
 	int fromPort, toPort;
 
-	/* Offsets into list of allow and deny rules. Any rules
+	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
-	int allowRules, denyRules;
-	int allowRulesTotal, denyRulesTotal;
+	int rulesStart, rulesCount;
 };
 
 ServerInfo *seInfo = NULL;
 int seTotal = 0;
-
-int globalAllowRules = 0;
-int globalDenyRules = 0;
 
 typedef struct _connection_info ConnectionInfo;
 struct _connection_info
@@ -143,11 +154,6 @@ struct _connection_info
 ConnectionInfo *coInfo = NULL;
 int coTotal = 0;
 
-char **allowRules = NULL;
-char **denyRules = NULL;
-int *denyRulesFor = NULL;
-int allowRulesTotal = 0;
-int denyRulesTotal = 0;
 int maxfd = 0;
 char *logFileName = NULL;
 char *pidLogFileName = NULL;
@@ -305,22 +311,14 @@ static void readConfiguration(void)
 	free(seInfo);
 	seInfo = NULL;
 	seTotal = 0;
-	/* Forget existing allow rules. */
-	for (int i = 0; i < allowRulesTotal; ++i) {
-		free(allowRules[i]);
+	/* Forget existing rules. */
+	for (int i = 0; i < allRulesCount; ++i) {
+		free(allRules[i].pattern);
 	}
 	/* Free memory associated with previous set. */
-	free(allowRules);
-	allowRules = NULL;
-	globalAllowRules = allowRulesTotal = 0;
-	/* Forget existing deny rules. */
-	for (int i = 0; i < denyRulesTotal; ++i) {
-		free(denyRules[i]);
-	}
-	/* Free memory associated with previous set. */
-	free(denyRules);
-	denyRules = NULL;
-	globalDenyRules = denyRulesTotal = 0;
+	free(allRules);
+	allRules = NULL;
+	allRulesCount = globalRulesCount = 0;
 	/* Free file names */
 	free(logFileName);
 	logFileName = NULL;
@@ -331,7 +329,7 @@ static void readConfiguration(void)
 	if (!in) {
 		goto lowMemory;
 	}
-	for (int lnum = 0, ai = 0, di = 0; ; ) {
+	for (int lnum = 0; ; ) {
 		if (!getConfLine(in, line, sizeof(line), &lnum)) {
 			break;
 		}
@@ -341,11 +339,12 @@ static void readConfiguration(void)
 				"on file %s, line %d.\n", options.conf_file, lnum);
 			continue;
 		}
-		if (!strcmp(bindAddress, "allow")) {
+		if (!strcmp(bindAddress, "allow")
+			|| !strcmp(bindAddress, "deny")) {
 			char *pattern = strtok(0, " \t\r\n");
 			if (!pattern) {
-				syslog(LOG_ERR, "nothing to allow "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
+				syslog(LOG_ERR, "nothing to %s "
+					"specified on file %s, line %d.\n", bindAddress, options.conf_file, lnum);
 				continue;
 			}
 			if (patternBad(pattern)) {
@@ -358,49 +357,25 @@ static void readConfiguration(void)
 				continue;
 			}
 
-			allowRules = (char **)
-				realloc(allowRules, sizeof(char *) * (ai + 1));
-			if (!allowRules) {
+			allRules = (Rule *)
+				realloc(allRules, sizeof(Rule *) * (allRulesCount + 1));
+			if (!allRules) {
 				goto lowMemory;
 			}
-			allowRules[ai] = strdup(pattern);
-			if (!allowRules[ai]) {
+			allRules[allRulesCount].pattern = strdup(pattern);
+			if (!allRules[allRulesCount].pattern) {
 				goto lowMemory;
 			}
+			allRules[allRulesCount].type = bindAddress[0] == 'a' ? allowRule : denyRule;
 			if (seTotal > 0) {
-				if (seInfo[seTotal - 1].allowRulesTotal == 0) {
-					seInfo[seTotal - 1].allowRules = ai;
+				if (seInfo[seTotal - 1].rulesStart == 0) {
+					seInfo[seTotal - 1].rulesStart = allRulesCount;
 				}
-				seInfo[seTotal - 1].allowRulesTotal++;
+				++seInfo[seTotal - 1].rulesCount;
 			} else {
-				globalAllowRules++;
+				++globalRulesCount;
 			}
-			ai++;
-		} else if (!strcmp(bindAddress, "deny")) {
-			char *pattern = strtok(0, " \t\r\n");
-			if (!pattern) {
-				syslog(LOG_ERR, "nothing to deny "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			denyRules = (char **)
-				realloc(denyRules, sizeof(char *) * (di + 1));
-			if (!denyRules) {
-				goto lowMemory;
-			}
-			denyRules[di] = strdup(pattern);
-			if (!denyRules[di]) {
-				goto lowMemory;
-			}
-			if (seTotal > 0) {
-				if (seInfo[seTotal - 1].denyRulesTotal == 0) {
-					seInfo[seTotal - 1].denyRules = di;
-				}
-				seInfo[seTotal - 1].denyRulesTotal++;
-			} else {
-				globalDenyRules++;
-			}
-			di++;
+			++allRulesCount;
 		} else if (!strcmp(bindAddress, "logfile")) {
 			char *nt = strtok(0, " \t\r\n");
 			if (!nt) {
@@ -901,11 +876,13 @@ void handleAccept(int i)
 		this step. If there are any, and it doesn't
 		match at least one, kick it out. */
 	int good = 1;
-	for (int j = 0; j < globalAllowRules; ++j) {
-		good = 0;
-		if (match(addressText, allowRules[j])) {
-			good = 1;
-			break;
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == allowRule) {
+			good = 0;
+			if (match(addressText, allRules[j].pattern)) {
+				good = 1;
+				break;
+			}
 		}
 	}
 	if (!good) {
@@ -914,8 +891,9 @@ void handleAccept(int i)
 	}
 	/* 2. Check global deny rules. If it matches
 		any of the global deny rules, kick it out. */
-	for (int j = 0; j < globalDenyRules; ++j) {
-		if (match(addressText, denyRules[j])) {
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == denyRule
+			&& match(addressText, allRules[j].pattern)) {
 			refuse(cnx, logDenied);
 		}
 	}
@@ -923,12 +901,14 @@ void handleAccept(int i)
 		If there are none, it's OK. If there are any,
 		it must match at least one. */
 	good = 1;
-	for (int j = 0; j < srv->allowRulesTotal; ++j) {
-		good = 0;
-		if (match(addressText,
-			allowRules[srv->allowRules + j])) {
-			good = 1;
-			break;
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == allowRule) {
+			good = 0;
+			if (match(addressText,
+				allRules[srv->rulesStart + j].pattern)) {
+				good = 1;
+				break;
+			}
 		}
 	}
 	if (!good) {
@@ -937,9 +917,9 @@ void handleAccept(int i)
 	}
 	/* 4. Check deny rules specific to this forwarding rule. If
 		it matches any of the deny rules, kick it out. */
-	for (int j = 0; j < srv->denyRulesTotal; ++j) {
-		if (match(addressText,
-			denyRules[srv->denyRules + j])) {
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == denyRule
+			&& match(addressText, allRules[srv->rulesStart + j].pattern)) {
 			refuse(cnx, logDenied);
 		}
 	}
