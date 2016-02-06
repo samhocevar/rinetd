@@ -140,12 +140,13 @@ RinetdOptions options = {
 	0,
 };
 
-static int getAddress(char const *host, struct in_addr *iaddr);
 static void selectPass(void);
 static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleAccept(int i);
+static ConnectionInfo *findAvailableConnection(void);
+static int getAddress(char const *host, struct in_addr *iaddr);
 static void refuse(ConnectionInfo *cnx, int logCode);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
@@ -513,7 +514,7 @@ static void allocConnections(int count)
 	coTotal += count;
 }
 
-static ConnectionInfo *findAvailableConnection()
+static ConnectionInfo *findAvailableConnection(void)
 {
 	/* Find an existing closed connection to reuse */
 	for (int j = 0; j < coTotal; ++j) {
