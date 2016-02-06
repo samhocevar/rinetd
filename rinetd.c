@@ -609,8 +609,7 @@ void handleRemoteWrite(ConnectionInfo *cnx);
 void handleRemoteRead(ConnectionInfo *cnx);
 void handleLocalWrite(ConnectionInfo *cnx);
 void handleLocalRead(ConnectionInfo *cnx);
-void handleCloseFromLocal(ConnectionInfo *cnx);
-void handleCloseFromRemote(ConnectionInfo *cnx);
+static void handleClose(ConnectionInfo *cnx, int *closingFd, int *otherFd, int msgIfFirstToClose);
 void handleAccept(int i);
 void openLocalFd(int se, ConnectionInfo *cnx);
 
@@ -710,7 +709,7 @@ void handleRemoteRead(ConnectionInfo *cnx)
 	}
 	if (got <= 0) {
 		/* Prepare for closing */
-		handleCloseFromRemote(cnx);
+		handleClose(cnx, &cnx->reFd, &cnx->loFd, logRemoteClosedFirst);
 		return;
 	}
 	cnx->bytesInput += got;
@@ -735,7 +734,7 @@ void handleRemoteWrite(ConnectionInfo *cnx)
 		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
-		handleCloseFromRemote(cnx);
+		handleClose(cnx, &cnx->reFd, &cnx->loFd, logRemoteClosedFirst);
 		return;
 	}
 	cnx->outputWPos += got;
@@ -762,7 +761,7 @@ void handleLocalRead(ConnectionInfo *cnx)
 		}
 	}
 	if (got <= 0) {
-		handleCloseFromLocal(cnx);
+		handleClose(cnx, &cnx->loFd, &cnx->reFd, logLocalClosedFirst);
 		return;
 	}
 	cnx->outputRPos += got;
@@ -786,7 +785,7 @@ void handleLocalWrite(ConnectionInfo *cnx)
 		if (GetLastError() == WSAEINPROGRESS) {
 			return;
 		}
-		handleCloseFromLocal(cnx);
+		handleClose(cnx, &cnx->loFd, &cnx->reFd, logLocalClosedFirst);
 		return;
 	}
 	cnx->inputWPos += got;
@@ -796,53 +795,26 @@ void handleLocalWrite(ConnectionInfo *cnx)
 	}
 }
 
-void handleCloseFromLocal(ConnectionInfo *cnx)
+static void handleClose(ConnectionInfo *cnx, int *closingFd, int *otherFd, int msgIfFirstToClose)
 {
 	cnx->coClosing = 1;
-	/* The local end fizzled out, so make sure
-		we're all done with that */
-	PERROR("close from local");
-	closesocket(cnx->loFd);
-	cnx->loFd = INVALID_SOCKET;
-	if (cnx->reFd != INVALID_SOCKET) {
+	/* One end fizzled out, so make sure we're all done with that */
+	closesocket(*closingFd);
+	*closingFd = INVALID_SOCKET;
+	if (*otherFd != INVALID_SOCKET) {
 #ifndef __linux__
 #ifndef WIN32
-		/* Now set up the remote end for a polite closing */
+		/* Now set up the other end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
 			output buffer, so the next write notification
 			tells us for sure that we can close the socket. */
 		int arg = 1024;
-		setsockopt(cnx->reFd, SOL_SOCKET, SO_SNDLOWAT,
+		setsockopt(*otherFd, SOL_SOCKET, SO_SNDLOWAT,
 			&arg, sizeof(arg));
 #endif /* WIN32 */
 #endif /* __linux__ */
-		cnx->coLog = logLocalClosedFirst;
-	}
-}
-
-void handleCloseFromRemote(ConnectionInfo *cnx)
-{
-	cnx->coClosing = 1;
-	/* The remote end fizzled out, so make sure
-		we're all done with that */
-	PERROR("close from remote");
-	closesocket(cnx->reFd);
-	cnx->reFd = INVALID_SOCKET;
-	if (cnx->loFd != INVALID_SOCKET) {
-#ifndef __linux__
-#ifndef WIN32
-		/* Now set up the local end for a polite closing */
-
-		/* Request a low-water mark equal to the entire
-			output buffer, so the next write notification
-			tells us for sure that we can close the socket. */
-		int arg = 1024;
-		setsockopt(cnx->loFd, SOL_SOCKET, SO_SNDLOWAT,
-			&arg, sizeof(arg));
-#endif /* WIN32 */
-#endif /* __linux__ */
-		cnx->coLog = logRemoteClosedFirst;
+		cnx->coLog = msgIfFirstToClose;
 	}
 }
 
