@@ -55,7 +55,7 @@ struct _connection_info
 	struct in_addr reAddresses;
 	int coClosing;
 	int coLog;
-	int server; // only useful for logEvent
+	ServerInfo const *server; // only useful for logEvent
 };
 
 /* Option parsing */

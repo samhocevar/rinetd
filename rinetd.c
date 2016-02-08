@@ -132,7 +132,7 @@ static void selectPass(void);
 static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
-static void handleAccept(int i);
+static void handleAccept(ServerInfo const *srv);
 static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
 static int getAddress(char const *host, struct in_addr *iaddr);
@@ -144,7 +144,7 @@ static void clearConfiguration(void);
 static void readConfiguration(void);
 
 static void registerPID(void);
-static void logEvent(ConnectionInfo const *cnx, int i, int result);
+static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
 static struct tm *get_gmtoff(int *tz);
 
 /* Signal handlers */
@@ -213,6 +213,11 @@ int main(int argc, char *argv[])
 }
 
 static void clearConfiguration(void) {
+	/* Remove references to server information */
+	for (int i = 0; i < coTotal; ++i) {
+		ConnectionInfo *cnx = &coInfo[i];
+		cnx->server = NULL;
+	}
 	/* Close existing server sockets. */
 	for (int i = 0; i < seTotal; ++i) {
 		ServerInfo *srv = &seInfo[i];
@@ -490,6 +495,12 @@ static void setConnectionCount(int newCount)
 	}
 
 	for (int i = newCount; i < coTotal; ++i) {
+		if (coInfo[i].local.fd != INVALID_SOCKET) {
+			closesocket(coInfo[i].local.fd);
+		}
+		if (coInfo[i].remote.fd != INVALID_SOCKET) {
+			closesocket(coInfo[i].remote.fd);
+		}
 		free(coInfo[i].local.buffer);
 	}
 
@@ -595,9 +606,10 @@ static void selectPass(void) {
 	}
 	select(maxfd + 1, readfds, writefds, 0, 0);
 	for (int i = 0; i < seTotal; ++i) {
-		if (seInfo[i].fd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(seInfo[i].fd, readfds)) {
-				handleAccept(i);
+		ServerInfo *srv = &seInfo[i];
+		if (srv->fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(srv->fd, readfds)) {
+				handleAccept(srv);
 			}
 		}
 	}
@@ -702,14 +714,13 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	}
 }
 
-static void handleAccept(int i)
+static void handleAccept(ServerInfo const *srv)
 {
 	ConnectionInfo *cnx = findAvailableConnection();
 	if (!cnx) {
 		return;
 	}
 
-	ServerInfo const *srv = &seInfo[i];
 	struct sockaddr addr;
 	struct in_addr address;
 #if HAVE_SOCKLEN_T
@@ -721,7 +732,7 @@ static void handleAccept(int i)
 	SOCKET nfd = accept(srv->fd, &addr, &addrlen);
 	if (nfd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "accept(%d): %m", srv->fd);
-		logEvent(NULL, i, logAcceptFailed);
+		logEvent(NULL, srv, logAcceptFailed);
 		return;
 	}
 
@@ -740,7 +751,7 @@ static void handleAccept(int i)
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
 	cnx->coClosing = 0;
 	cnx->coLog = logUnknownError;
-	cnx->server = i;
+	cnx->server = srv;
 
 	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
 	cnx->reAddresses.s_addr = address.s_addr = sin->sin_addr.s_addr;
@@ -807,7 +818,7 @@ static void handleAccept(int i)
 		syslog(LOG_ERR, "socket(): %m");
 		closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
-		logEvent(cnx, cnx->server, logLocalSocketFailed);
+		logEvent(cnx, srv, logLocalSocketFailed);
 		return;
 	}
 
@@ -821,7 +832,7 @@ static void handleAccept(int i)
 		closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		cnx->local.fd = INVALID_SOCKET;
-		logEvent(cnx, cnx->server, logLocalBindFailed);
+		logEvent(cnx, srv, logLocalBindFailed);
 		return;
 	}
 #endif
@@ -854,7 +865,7 @@ static void handleAccept(int i)
 			closesocket(cnx->remote.fd);
 			cnx->remote.fd = INVALID_SOCKET;
 			cnx->local.fd = INVALID_SOCKET;
-			logEvent(cnx, cnx->server, logLocalConnectFailed);
+			logEvent(cnx, srv, logLocalConnectFailed);
 			return;
 		}
 	}
@@ -868,7 +879,7 @@ static void handleAccept(int i)
 	}
 #endif /* WIN32 */
 
-	logEvent(cnx, cnx->server, logOpened);
+	logEvent(cnx, srv, logOpened);
 }
 
 static void refuse(ConnectionInfo *cnx, int logCode)
@@ -993,11 +1004,8 @@ error:
 #endif	/* __linux__ */
 }
 
-static void logEvent(ConnectionInfo const *cnx, int i, int result)
+static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result)
 {
-	static struct in_addr const nullAddress = { 0 };
-
-	ServerInfo const *srv = &seInfo[i];
 	/* Bit of borrowing from Apache logging module here,
 		thanks folks */
 	int timz;
@@ -1009,15 +1017,26 @@ static void logEvent(ConnectionInfo const *cnx, int i, int result)
 	}
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 
-	struct in_addr const *reAddress = &nullAddress;
+	char const *addressText = "?";
 	int bytesOutput = 0;
 	int bytesInput = 0;
 	if (cnx != NULL) {
-		reAddress = &cnx->reAddresses;
+		struct in_addr const *reAddress = &cnx->reAddresses;
+		addressText = inet_ntoa(*reAddress);
 		bytesOutput = cnx->remote.sentBytes;
 		bytesInput = cnx->remote.recvBytes;
 	}
-	char const *addressText = inet_ntoa(*reAddress);
+
+	char const *fromHost = "?";
+	int fromPort = 0;
+	char const *toHost =  "?";
+	int toPort =  0;
+	if (srv != NULL) {
+		fromHost = srv->fromHost;
+		fromPort = srv->fromPort;
+		toHost = srv->toHost;
+		toPort = srv->toPort;
+	}
 
 	if (result==logNotAllowed || result==logDenied)
 		syslog(LOG_INFO, "%s %s"
@@ -1046,8 +1065,8 @@ static void logEvent(ConnectionInfo const *cnx, int i, int result)
 				sign,
 				timz / 60,
 				timz % 60,
-				srv->fromHost, srv->fromPort,
-				srv->toHost, srv->toPort,
+				fromHost, fromPort,
+				toHost, toPort,
 				logMessages[result],
 				bytesOutput,
 				bytesInput);
@@ -1058,8 +1077,8 @@ static void logEvent(ConnectionInfo const *cnx, int i, int result)
 					"\t%d\t%s\n",
 				tstr,
 				addressText,
-				srv->fromHost, srv->fromPort,
-				srv->toHost, srv->toPort,
+				fromHost, fromPort,
+				toHost, toPort,
 				bytesInput,
 				bytesOutput,
 				logMessages[result]);
