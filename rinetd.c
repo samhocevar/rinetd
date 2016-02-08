@@ -6,12 +6,13 @@
 #	define RETSIGTYPE void
 #endif
 
-#if WIN32
+#if _WIN32
 #	include <windows.h>
 #	include <winsock.h>
 #	include "getopt.h"
 #	define syslog fprintf
 #	define LOG_ERR stderr
+#	define LOG_INFO stdout
 #else
 #	include <sys/types.h>
 #	include <sys/socket.h>
@@ -30,20 +31,20 @@
 #	elif HAVE_SYS_TIME_H
 #		include <sys/time.h>
 #	endif
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#if WIN32 || (!TIME_WITH_SYS_TIME && !HAVE_SYS_TIME_H)
+#if _WIN32 || (!TIME_WITH_SYS_TIME && !HAVE_SYS_TIME_H)
 #	include <time.h>
 #endif
 #include <ctype.h>
 
-#if WIN32
-	/* WIN32 doesn't really have WSAEAGAIN */
+#if _WIN32
+	/* _WIN32 doesn't really have WSAEAGAIN */
 #	ifndef WSAEAGAIN
 #		define WSAEAGAIN WSAEWOULDBLOCK
 #	endif
@@ -63,7 +64,7 @@ static inline int closesocket(int s) {
 static inline int GetLastError(void) {
 	return errno;
 }
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 #ifdef DEBUG
 #	define PERROR perror
@@ -148,10 +149,10 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 static struct tm *get_gmtoff(int *tz);
 
 /* Signal handlers */
-#if !HAVE_SIGACTION && !WIN32
+#if !HAVE_SIGACTION && !_WIN32
 static RETSIGTYPE plumber(int s);
 #endif
-#if !WIN32
+#if !_WIN32
 static RETSIGTYPE hup(int s);
 #endif
 static RETSIGTYPE quit(int s);
@@ -159,7 +160,7 @@ static RETSIGTYPE quit(int s);
 
 int main(int argc, char *argv[])
 {
-#ifdef WIN32
+#ifdef _WIN32
 	WSADATA wsaData;
 	int result = WSAStartup(MAKEWORD(1, 1), &wsaData);
 	if (result != 0) {
@@ -194,7 +195,7 @@ int main(int argc, char *argv[])
 	sigaction(SIGPIPE, &act, NULL);
 	act.sa_handler = &hup;
 	sigaction(SIGHUP, &act, NULL);
-#elif !WIN32
+#elif !_WIN32
 	signal(SIGPIPE, plumber);
 	signal(SIGHUP, hup);
 #endif
@@ -436,7 +437,7 @@ static void readConfiguration(void) {
 				goto lowMemory;
 			}
 			srv->toPort = connectPort;
-#ifndef WIN32
+#ifndef _WIN32
 			if (fd > maxfd) {
 				maxfd = fd;
 			}
@@ -699,7 +700,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	socket->fd = INVALID_SOCKET;
 	if (other_socket->fd != INVALID_SOCKET) {
 #ifndef __linux__
-#ifndef WIN32
+#ifndef _WIN32
 		/* Now set up the other end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
@@ -708,7 +709,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		int arg = 1024;
 		setsockopt(other_socket->fd, SOL_SOCKET, SO_SNDLOWAT,
 			&arg, sizeof(arg));
-#endif /* WIN32 */
+#endif /* _WIN32 */
 #endif /* __linux__ */
 		cnx->coLog = socket == &cnx->local ?
 			logLocalClosedFirst : logRemoteClosedFirst;
@@ -739,7 +740,7 @@ static void handleAccept(ServerInfo const *srv)
 
 	int tmp = 1;
 	ioctlsocket(nfd, FIONBIO, &tmp);
-#ifndef WIN32
+#ifndef _WIN32
 	tmp = 0;
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
@@ -843,7 +844,7 @@ static void handleAccept(ServerInfo const *srv)
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
 
-#ifndef WIN32
+#ifndef _WIN32
 #ifdef __linux__
 	tmp = 0;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
@@ -851,7 +852,7 @@ static void handleAccept(ServerInfo const *srv)
 	tmp = 1024;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
 #endif /* __linux__ */
-#endif /* WIN32 */
+#endif /* _WIN32 */
 	tmp = 1;
 	ioctlsocket(cnx->local.fd, FIONBIO, &tmp);
 
@@ -871,14 +872,14 @@ static void handleAccept(ServerInfo const *srv)
 		}
 	}
 
-#ifndef WIN32
+#ifndef _WIN32
 	if (cnx->local.fd > maxfd) {
 		maxfd = cnx->local.fd;
 	}
 	if (cnx->remote.fd > maxfd) {
 		maxfd = cnx->remote.fd;
 	}
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 	logEvent(cnx, srv, logOpened);
 }
@@ -942,7 +943,7 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 	return -1;
 }
 
-#if !HAVE_SIGACTION && !WIN32
+#if !HAVE_SIGACTION && !_WIN32
 RETSIGTYPE plumber(int s)
 {
 	/* Just reinstall */
@@ -950,7 +951,7 @@ RETSIGTYPE plumber(int s)
 }
 #endif
 
-#if !WIN32
+#if !_WIN32
 RETSIGTYPE hup(int s)
 {
 	(void)s;
@@ -963,7 +964,7 @@ RETSIGTYPE hup(int s)
 	signal(SIGHUP, hup);
 #endif
 }
-#endif /* WIN32 */
+#endif /* _WIN32 */
 
 RETSIGTYPE quit(int s)
 {

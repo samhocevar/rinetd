@@ -11,6 +11,7 @@ AC_PROG_CC
 AC_PROG_INSTALL
 
 # Checks for libraries.
+AC_CHECK_LIB(ws2_32, main, [LIBS="${LIBS} -lws2_32"])
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -26,7 +27,8 @@ AC_CHECK_TYPES(socklen_t, [], [],
 
 # Checks for library functions.
 AC_FUNC_FORK
-AC_FUNC_MALLOC
+#XXX: disabled because of cross-compilation issues
+#AC_FUNC_MALLOC
 AC_TYPE_SIGNAL
 AC_FUNC_STRFTIME
 AC_CHECK_FUNCS([gethostbyname memset select socket strstr daemon fork sigaction])
