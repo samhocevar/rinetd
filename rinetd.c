@@ -605,14 +605,6 @@ static void selectPass(void) {
 		}
 	}
 	select(maxfd + 1, readfds, writefds, 0, 0);
-	for (int i = 0; i < seTotal; ++i) {
-		ServerInfo *srv = &seInfo[i];
-		if (srv->fd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(srv->fd, readfds)) {
-				handleAccept(srv);
-			}
-		}
-	}
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
 		if (cnx->remote.fd != INVALID_SOCKET) {
@@ -633,6 +625,15 @@ static void selectPass(void) {
 		if (cnx->local.fd != INVALID_SOCKET) {
 			if (FD_ISSET_EXT(cnx->local.fd, writefds)) {
 				handleWrite(cnx, &cnx->local, &cnx->remote);
+			}
+		}
+	}
+	/* Handle servers last because handleAccept() may modify coTotal */
+	for (int i = 0; i < seTotal; ++i) {
+		ServerInfo *srv = &seInfo[i];
+		if (srv->fd != INVALID_SOCKET) {
+			if (FD_ISSET_EXT(srv->fd, readfds)) {
+				handleAccept(srv);
 			}
 		}
 	}
