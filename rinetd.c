@@ -25,6 +25,7 @@
 #	include <errno.h>
 #	include <syslog.h>
 #	define INVALID_SOCKET (-1)
+#	define SOCKET_ERROR (-1)
 #	if TIME_WITH_SYS_TIME
 #		include <sys/time.h>
 #		include <time.h>
@@ -376,7 +377,7 @@ static void readConfiguration(void) {
 				continue;
 			}
 			/* Make a server socket */
-			int fd = socket(PF_INET, SOCK_STREAM, 0);
+			SOCKET fd = socket(PF_INET, SOCK_STREAM, 0);
 			if (fd == INVALID_SOCKET) {
 				syslog(LOG_ERR, "couldn't create "
 					"server socket! (%m)\n");
@@ -407,7 +408,12 @@ static void readConfiguration(void) {
 				closesocket(fd);
 				continue;
 			}
-			ioctlsocket(fd, FIONBIO, &tmp);
+#if _WIN32
+			u_long ioctltmp;
+#else
+			int ioctltmp;
+#endif
+			ioctlsocket(fd, FIONBIO, &ioctltmp);
 			if (getAddress(connectAddress, &iaddr) < 0) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "host %s could not be "
@@ -738,10 +744,15 @@ static void handleAccept(ServerInfo const *srv)
 		return;
 	}
 
-	int tmp = 1;
-	ioctlsocket(nfd, FIONBIO, &tmp);
+#if _WIN32
+	u_long ioctltmp;
+#else
+	int ioctltmp;
+#endif
+	ioctlsocket(nfd, FIONBIO, &ioctltmp);
+
 #ifndef _WIN32
-	tmp = 0;
+	int tmp = 0;
 	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
 
@@ -853,11 +864,12 @@ static void handleAccept(ServerInfo const *srv)
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
 #endif /* __linux__ */
 #endif /* _WIN32 */
-	tmp = 1;
-	ioctlsocket(cnx->local.fd, FIONBIO, &tmp);
+
+	ioctltmp = 1;
+	ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
 
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
-		sizeof(struct sockaddr_in)) == INVALID_SOCKET)
+		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
 	{
 		if ((GetLastError() != WSAEINPROGRESS) &&
 			(GetLastError() != WSAEWOULDBLOCK))
@@ -1003,6 +1015,8 @@ void registerPID(void)
 error:
 	syslog(LOG_ERR, "Couldn't write to "
 		"%s. PID was not logged (%m).\n", pid_file_name);
+#else
+	(void)pid_file_name;
 #endif	/* __linux__ */
 }
 
