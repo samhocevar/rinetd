@@ -20,7 +20,6 @@ int matchNoCase(char const *sorig, char const *p)
 
 int matchBody(char const *sorig, char const *p, int nocase)
 {
-	static int dummy = 0;
 	/* Algorithm:
 
 		Word separator: *. End-of-string
@@ -56,11 +55,6 @@ int matchBody(char const *sorig, char const *p, int nocase)
 
 	char const *s = sorig;
 	int escaped = 0;
-	if (strstr(p, "WS-0000")) {
-		if (strstr(s, "ws_ftp_pro.html")) {
-			dummy = 1;
-		}
-	}
 	while (1) {
 		char const *word;
 		int wordLen;
