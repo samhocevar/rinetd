@@ -291,7 +291,7 @@ static void readConfiguration(void) {
 			}
 
 			allRules = (Rule *)
-				realloc(allRules, sizeof(Rule *) * (allRulesCount + 1));
+				realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
 			if (!allRules) {
 				goto lowMemory;
 			}
