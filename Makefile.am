@@ -1,7 +1,7 @@
 
 AUTOMAKE_OPTIONS = foreign dist-bzip2
 
-EXTRA_DIST = bootstrap CHANGES index.html \
+EXTRA_DIST = bootstrap CHANGES.md README.md index.html \
 	getopt.c getopt.h $(man_MANS) $(sysconf_DATA)
 
 man_MANS = rinetd.8
