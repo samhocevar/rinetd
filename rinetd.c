@@ -7,8 +7,10 @@
 #endif
 
 #if _WIN32
+	/* Define this to a reasonably large value */
+#	define FD_SETSIZE 4096
+#	include <winsock2.h>
 #	include <windows.h>
-#	include <winsock.h>
 #	include "getopt.h"
 #	define syslog fprintf
 #	define LOG_ERR stderr
@@ -92,7 +94,15 @@ int seTotal = 0;
 ConnectionInfo *coInfo = NULL;
 int coTotal = 0;
 
+/* On Windows, the maximum number of file descriptors in an fd_set
+	is simply FD_SETSIZE and the first argument to select() is
+	ignored, so maxfd will never change. */
+#ifdef _WIN32
+int const maxfd = 0;
+#else
 int maxfd = 0;
+#endif
+
 char *logFileName = NULL;
 char *pidLogFileName = NULL;
 int logFormatCommon = 0;
@@ -573,8 +583,14 @@ static void selectPass(void) {
 
 	int const fdSetCount = maxfd / FD_SETSIZE + 1;
 #	define FD_ZERO_EXT(ar) for (int i = 0; i < fdSetCount; ++i) { FD_ZERO(&(ar)[i]); }
+#ifdef _WIN32
+	/* On Windows, only one fd_set is usable because of its structure. */
+#	define FD_SET_EXT(fd, ar) FD_SET(fd, &(ar)[0])
+#	define FD_ISSET_EXT(fd, ar) FD_ISSET(fd, &(ar)[0])
+#else
 #	define FD_SET_EXT(fd, ar) FD_SET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
 #	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
+#endif
 
 	fd_set readfds[fdSetCount], writefds[fdSetCount];
 	FD_ZERO_EXT(readfds);
