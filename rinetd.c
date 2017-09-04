@@ -153,11 +153,13 @@ static void refuse(ConnectionInfo *cnx, int logCode);
 static int readArgs (int argc, char **argv, RinetdOptions *options);
 static int getConfLine(FILE *in, char *line, int space, int *lnum);
 static void clearConfiguration(void);
-static void readConfiguration(void);
+static void readConfiguration(char const *file);
 
 static void registerPID(void);
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
 static struct tm *get_gmtoff(int *tz);
+
+#include "parse.h"
 
 /* Signal handlers */
 #if !HAVE_SIGACTION && !_WIN32
@@ -213,7 +215,7 @@ int main(int argc, char *argv[])
 	signal(SIGINT, quit);
 	signal(SIGTERM, quit);
 
-	readConfiguration();
+	readConfiguration(options.conf_file);
 	registerPID();
 
 	syslog(LOG_INFO, "Starting redirections...");
@@ -258,210 +260,23 @@ static void clearConfiguration(void) {
 	pidLogFileName = NULL;
 }
 
-static void readConfiguration(void) {
+static void readConfiguration(char const *file) {
+
 	/* Parse the configuration file. */
-	FILE *in = fopen(options.conf_file, "r");
+	FILE *in = fopen(file, "r");
 	if (!in) {
 		goto lowMemory;
 	}
-	for (int lnum = 0; ; ) {
-		char line[16384];
-		if (!getConfLine(in, line, sizeof(line), &lnum)) {
-			break;
-		}
-		char const *currentToken = strtok(line, " \t\r\n");
-		if (!currentToken) {
-			syslog(LOG_ERR, "no bind address specified "
-				"on file %s, line %d.\n", options.conf_file, lnum);
-			continue;
-		}
-		if (!strcmp(currentToken, "allow")
-			|| !strcmp(currentToken, "deny")) {
-			char const *pattern = strtok(0, " \t\r\n");
-			if (!pattern) {
-				syslog(LOG_ERR, "nothing to %s "
-					"specified on file %s, line %d.\n", currentToken, options.conf_file, lnum);
-				continue;
-			}
-			int bad = 0;
-			for (char const *p = pattern; *p; ++p) {
-				if (!strchr("0123456789?*.", *p)) {
-					bad = 1;
-					break;
-				}
-			}
-			if (bad) {
-				syslog(LOG_ERR, "illegal allow or "
-					"deny pattern. Only digits, ., and\n"
-					"the ? and * wild cards are allowed. "
-					"For performance reasons, rinetd\n"
-					"does not look up complete "
-					"host names.\n");
-				continue;
-			}
-
-			allRules = (Rule *)
-				realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
-			if (!allRules) {
-				goto lowMemory;
-			}
-			allRules[allRulesCount].pattern = strdup(pattern);
-			if (!allRules[allRulesCount].pattern) {
-				goto lowMemory;
-			}
-			allRules[allRulesCount].type = currentToken[0] == 'a' ? allowRule : denyRule;
-			if (seTotal > 0) {
-				if (seInfo[seTotal - 1].rulesStart == 0) {
-					seInfo[seTotal - 1].rulesStart = allRulesCount;
-				}
-				++seInfo[seTotal - 1].rulesCount;
-			} else {
-				++globalRulesCount;
-			}
-			++allRulesCount;
-		} else if (!strcmp(currentToken, "logfile")) {
-			char const *nt = strtok(0, " \t\r\n");
-			if (!nt) {
-				syslog(LOG_ERR, "no log file name "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			logFileName = strdup(nt);
-			if (!logFileName) {
-				goto lowMemory;
-			}
-		} else if (!strcmp(currentToken, "pidlogfile")) {
-			char const *nt = strtok(0, " \t\r\n");
-			if (!nt) {
-				syslog(LOG_ERR, "no PID log file name "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			pidLogFileName = strdup(nt);
-			if (!pidLogFileName) {
-				goto lowMemory;
-			}
-		} else if (!strcmp(currentToken, "logcommon")) {
-			logFormatCommon = 1;
-		} else {
-			/* A regular forwarding rule. */
-			char const *bindAddress = currentToken;
-			char const *bindPortS = strtok(0, " \t\r\n");
-			if (!bindPortS) {
-				syslog(LOG_ERR, "no bind port "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			struct servent *bindService = getservbyname(bindPortS, "tcp");
-			unsigned int bindPort = bindService ? ntohs(bindService->s_port) : atoi(bindPortS);
-			if (bindPort == 0 || bindPort >= 65536) {
-				syslog(LOG_ERR, "bind port missing "
-					"or out of range on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			char const *connectAddress = strtok(0, " \t\r\n");
-			if (!connectAddress) {
-				syslog(LOG_ERR, "no connect address "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			char const *connectPortS = strtok(0, " \t\r\n");
-			if (!connectPortS) {
-				syslog(LOG_ERR, "no connect port "
-					"specified on file %s, line %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			struct servent *connectService = getservbyname(connectPortS, "tcp");
-			unsigned int connectPort = connectService ? ntohs(connectService->s_port) : atoi(connectPortS);
-			if (connectPort == 0 || connectPort >= 65536) {
-				syslog(LOG_ERR, "bind port missing "
-					"or out of range on file %s,  %d.\n", options.conf_file, lnum);
-				continue;
-			}
-			/* Turn all of this stuff into reasonable addresses */
-			struct in_addr iaddr;
-			if (getAddress(bindAddress, &iaddr) < 0) {
-				fprintf(stderr, "rinetd: host %s could not be "
-					"resolved on line %d.\n",
-					bindAddress, lnum);
-				continue;
-			}
-			/* Make a server socket */
-			SOCKET fd = socket(PF_INET, SOCK_STREAM, 0);
-			if (fd == INVALID_SOCKET) {
-				syslog(LOG_ERR, "couldn't create "
-					"server socket! (%m)\n");
-				continue;
-			}
-			struct sockaddr_in saddr;
-			saddr.sin_family = AF_INET;
-			memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
-			saddr.sin_port = htons(bindPort);
-			int tmp = 1;
-			setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-				(const char *) &tmp, sizeof(tmp));
-			if (bind(fd, (struct sockaddr *)
-				&saddr, sizeof(saddr)) == SOCKET_ERROR)
-			{
-				/* Warn -- don't exit. */
-				syslog(LOG_ERR, "couldn't bind to "
-					"address %s port %d (%m)\n",
-					bindAddress, bindPort);
-				closesocket(fd);
-				continue;
-			}
-			if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
-				/* Warn -- don't exit. */
-				syslog(LOG_ERR, "couldn't listen to "
-					"address %s port %d (%m)\n",
-					bindAddress, bindPort);
-				closesocket(fd);
-				continue;
-			}
-#if _WIN32
-			u_long ioctltmp;
-#else
-			int ioctltmp;
-#endif
-			ioctlsocket(fd, FIONBIO, &ioctltmp);
-			if (getAddress(connectAddress, &iaddr) < 0) {
-				/* Warn -- don't exit. */
-				syslog(LOG_ERR, "host %s could not be "
-					"resolved on file %s, line %d.\n",
-					bindAddress, options.conf_file, lnum);
-				closesocket(fd);
-				continue;
-			}
-			/* Allocate server info */
-			seInfo = (ServerInfo *)
-				realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
-			if (!seInfo) {
-				goto lowMemory;
-			}
-			ServerInfo *srv = &seInfo[seTotal];
-			memset(srv, 0, sizeof(*srv));
-			srv->fd = fd;
-			srv->localAddr = iaddr;
-			srv->localPort = htons(connectPort);
-			srv->fromHost = strdup(bindAddress);
-			if (!srv->fromHost) {
-				goto lowMemory;
-			}
-			srv->fromPort = bindPort;
-			srv->toHost = strdup(connectAddress);
-			if (!srv->toHost) {
-				goto lowMemory;
-			}
-			srv->toPort = connectPort;
-#ifndef _WIN32
-			if (fd > maxfd) {
-				maxfd = fd;
-			}
-#endif
-			++seTotal;
-		}
+	yycontext ctx;
+	memset(&ctx, 0, sizeof(yycontext));
+	ctx.fp = in;
+	if (!yyparse(&ctx)) {
+		syslog(LOG_ERR, "invalid syntax "
+			"on file %s, line %d.\n", file, -1);
+		exit(1);
 	}
 	fclose(in);
+
 	/* Open the log file */
 	if (logFile) {
 		fclose(logFile);
@@ -986,7 +801,7 @@ RETSIGTYPE hup(int s)
 	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
 	/* Learn the new rules */
 	clearConfiguration();
-	readConfiguration();
+	readConfiguration(options.conf_file);
 #if !HAVE_SIGACTION
 	/* And reinstall the signal handler */
 	signal(SIGHUP, hup);

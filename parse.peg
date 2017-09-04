@@ -1,0 +1,176 @@
+%{
+#define YY_CTX_LOCAL 1
+#define YY_CTX_MEMBERS \
+    FILE *fp; \
+    int isAuthAllow; \
+    unsigned int port, bindPort, connectPort; \
+    char *bindAddress, *connectAddress;
+#define YY_INPUT(yyctx, buf, result, max_size) \
+{ \
+    int yyc = fgetc(yyctx->fp); \
+    result = (EOF == yyc) ? 0 : (*(buf) = yyc, 1); \
+}
+#define PARSE_ERROR exit(1);
+%}
+
+file     =  (line | invalid_syntax)*
+line     =  -? (rule | auth | logfile | pidlogfile | logcommon)? -? comment? eol
+
+comment  =  "#" (!eol .)*
+
+rule  =  bind_address - bind_port - connect_address - connect_port {
+	/* Turn all of this stuff into reasonable addresses */
+	struct in_addr iaddr;
+	if (getAddress(yy->bindAddress, &iaddr) < 0) {
+		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
+			yy->bindAddress);
+		PARSE_ERROR;
+	}
+	/* Make a server socket */
+	SOCKET fd = socket(PF_INET, SOCK_STREAM, 0);
+	if (fd == INVALID_SOCKET) {
+		syslog(LOG_ERR, "couldn't create "
+			"server socket! (%m)\n");
+		PARSE_ERROR;
+	}
+	struct sockaddr_in saddr;
+	saddr.sin_family = AF_INET;
+	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
+	saddr.sin_port = htons(yy->bindPort);
+	int tmp = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+		(const char *) &tmp, sizeof(tmp));
+	if (bind(fd, (struct sockaddr *)
+		&saddr, sizeof(saddr)) == SOCKET_ERROR)
+	{
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "couldn't bind to "
+			"address %s port %d (%m)\n",
+			yy->bindAddress, yy->bindPort);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+	if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "couldn't listen to "
+			"address %s port %d (%m)\n",
+			yy->bindAddress, yy->bindPort);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+#if _WIN32
+	u_long ioctltmp;
+#else
+	int ioctltmp;
+#endif
+	ioctlsocket(fd, FIONBIO, &ioctltmp);
+	if (getAddress(yy->connectAddress, &iaddr) < 0) {
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "host %s could not be resolved.\n",
+			yy->bindAddress);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+	/* Allocate server info */
+	seInfo = (ServerInfo *)
+		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+	if (!seInfo) {
+		PARSE_ERROR;
+	}
+	ServerInfo *srv = &seInfo[seTotal];
+	memset(srv, 0, sizeof(*srv));
+	srv->fd = fd;
+	srv->localAddr = iaddr;
+	srv->localPort = htons(yy->connectPort);
+	srv->fromHost = yy->bindAddress;
+	if (!srv->fromHost) {
+		PARSE_ERROR;
+	}
+	srv->fromPort = yy->bindPort;
+	srv->toHost = yy->connectAddress;
+	if (!srv->toHost) {
+		PARSE_ERROR;
+	}
+	srv->toPort = yy->connectPort;
+#ifndef _WIN32
+	if (fd > maxfd) {
+		maxfd = fd;
+	}
+#endif
+	++seTotal;
+
+	yy->bindAddress = yy->connectAddress = NULL;
+}
+
+bind_address     =  < ipv4 > { yy->bindAddress = strdup(yytext); }
+connect_address  =  < ipv4 > { yy->connectAddress = strdup(yytext); }
+bind_port        =  port { yy->bindPort = yy->port; }
+connect_port     =  port { yy->connectPort = yy->port; }
+
+port  =  < (number | service) > {
+	struct servent *bindService = getservbyname(yytext, "tcp");
+	yy->port = bindService ? ntohs(bindService->s_port) : atoi(yytext);
+	if (yy->port == 0 || yy->port >= 65536) {
+		syslog(LOG_ERR, "bind port missing or out of range\n");
+		PARSE_ERROR;
+	}
+}
+
+auth  =  auth_key - < pattern > {
+	allRules = (Rule *)
+		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
+	if (!allRules) {
+		PARSE_ERROR;
+	}
+	allRules[allRulesCount].pattern = strdup(yytext);
+	if (!allRules[allRulesCount].pattern) {
+		PARSE_ERROR;
+	}
+	allRules[allRulesCount].type = yy->isAuthAllow ? allowRule : denyRule;
+	if (seTotal > 0) {
+		if (seInfo[seTotal - 1].rulesStart == 0) {
+			seInfo[seTotal - 1].rulesStart = allRulesCount;
+		}
+		++seInfo[seTotal - 1].rulesCount;
+	} else {
+		++globalRulesCount;
+	}
+	++allRulesCount;
+}
+
+auth_key = < ("allow" | "deny") >         { yy->isAuthAllow = (yytext[0] == 'a'); }
+
+logfile  =  "logfile" - < filename > {
+	logFileName = strdup(yytext);
+	if (!logFileName) {
+		PARSE_ERROR;
+	}
+}
+
+pidlogfile  =  "pidlogfile" - < filename > {
+	pidLogFileName = strdup(yytext);
+	if (!pidLogFileName) {
+		PARSE_ERROR;
+	}
+}
+
+logcommon  =  "logcommon" {
+	logFormatCommon = 1;
+}
+
+invalid_syntax  =  < (!eol .)* > eol { PARSE_ERROR; /* FIXME */ }
+
+service  =  name
+ipv4     =  number [.] number [.] number [.] number | '0'
+pattern  =  [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+)?)?)?
+number   =  digit+
+
+name     =  [a-zA-Z][a-zA-Z0-9_]*
+filename =  '"' [^"]+ '"'
+         | [^ \t\r\n]+
+
+-        =  [ \t]+
+digit    =  [0-9]
+eol      =  '\r'? '\n' | eof
+eof      =  '\0'
+

@@ -8,7 +8,13 @@ man_MANS = rinetd.8
 sysconf_DATA = rinetd.conf
 
 sbin_PROGRAMS = rinetd
-rinetd_SOURCES = rinetd.c rinetd.h match.c match.h
+rinetd_SOURCES = rinetd.c rinetd.h parse.h match.c match.h
+
+GENERATED_SOURCES = parse.h
+
+# If peg/leg is available, regenerate parse.h
+parse.h: parse.peg
+	if which leg >/dev/null 2>&1; then leg -o $@ $^; else touch $@; fi
 
 # _POSIX_C_SOURCE is for SA_RESTART and others
 # _XOPEN_SOURCE is for struct sigaction
