@@ -3,7 +3,9 @@
 #define YY_CTX_MEMBERS \
     FILE *fp; \
     int isAuthAllow; \
-    unsigned int port, bindPort, connectPort; \
+    char *tmpPort; \
+    int tmpPortNum, tmpProto; \
+    int bindPortNum, bindProto, connectPortNum, connectProto; \
     char *bindAddress, *connectAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
@@ -13,110 +15,38 @@
 #define PARSE_ERROR exit(1);
 %}
 
-file     =  (line | invalid_syntax)*
-line     =  -? (rule | auth | logfile | pidlogfile | logcommon)? -? comment? eol
-
+file     =  (line | invalid-syntax)*
+line     =  -? (command -?)? comment? eol
+command  =  (server | rule | logfile | pidlogfile | logcommon)
 comment  =  "#" (!eol .)*
 
-rule  =  bind_address - bind_port - connect_address - connect_port {
-	/* Turn all of this stuff into reasonable addresses */
-	struct in_addr iaddr;
-	if (getAddress(yy->bindAddress, &iaddr) < 0) {
-		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
-			yy->bindAddress);
-		PARSE_ERROR;
-	}
-	/* Make a server socket */
-	SOCKET fd = socket(PF_INET, SOCK_STREAM, 0);
-	if (fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "couldn't create "
-			"server socket! (%m)\n");
-		PARSE_ERROR;
-	}
-	struct sockaddr_in saddr;
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
-	saddr.sin_port = htons(yy->bindPort);
-	int tmp = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-		(const char *) &tmp, sizeof(tmp));
-	if (bind(fd, (struct sockaddr *)
-		&saddr, sizeof(saddr)) == SOCKET_ERROR)
-	{
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "couldn't bind to "
-			"address %s port %d (%m)\n",
-			yy->bindAddress, yy->bindPort);
-		closesocket(fd);
-		PARSE_ERROR;
-	}
-	if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "couldn't listen to "
-			"address %s port %d (%m)\n",
-			yy->bindAddress, yy->bindPort);
-		closesocket(fd);
-		PARSE_ERROR;
-	}
-#if _WIN32
-	u_long ioctltmp;
-#else
-	int ioctltmp;
-#endif
-	ioctlsocket(fd, FIONBIO, &ioctltmp);
-	if (getAddress(yy->connectAddress, &iaddr) < 0) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "host %s could not be resolved.\n",
-			yy->bindAddress);
-		closesocket(fd);
-		PARSE_ERROR;
-	}
-	/* Allocate server info */
-	seInfo = (ServerInfo *)
-		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
-	if (!seInfo) {
-		PARSE_ERROR;
-	}
-	ServerInfo *srv = &seInfo[seTotal];
-	memset(srv, 0, sizeof(*srv));
-	srv->fd = fd;
-	srv->localAddr = iaddr;
-	srv->localPort = htons(yy->connectPort);
-	srv->fromHost = yy->bindAddress;
-	if (!srv->fromHost) {
-		PARSE_ERROR;
-	}
-	srv->fromPort = yy->bindPort;
-	srv->toHost = yy->connectAddress;
-	if (!srv->toHost) {
-		PARSE_ERROR;
-	}
-	srv->toPort = yy->connectPort;
-#ifndef _WIN32
-	if (fd > maxfd) {
-		maxfd = fd;
-	}
-#endif
-	++seTotal;
-
+server  =  bind-address - bind-port - connect-address - connect-port {
+	addServer(yy->bindAddress, yy->bindPortNum, yy->bindProto,
+	          yy->connectAddress, yy->connectPortNum, yy->connectProto);
 	yy->bindAddress = yy->connectAddress = NULL;
 }
 
-bind_address     =  < ipv4 > { yy->bindAddress = strdup(yytext); }
-connect_address  =  < ipv4 > { yy->connectAddress = strdup(yytext); }
-bind_port        =  port { yy->bindPort = yy->port; }
-connect_port     =  port { yy->connectPort = yy->port; }
+bind-address     =  < ipv4 > { yy->bindAddress = strdup(yytext); }
+connect-address  =  < ipv4 > { yy->connectAddress = strdup(yytext); }
+bind-port        =  full-port { yy->bindPortNum = yy->tmpPortNum; yy->bindProto = yy->tmpProto; }
+connect-port     =  full-port { yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; }
 
-port  =  < (number | service) > {
-	struct servent *bindService = getservbyname(yytext, "tcp");
-	yy->port = bindService ? ntohs(bindService->s_port) : atoi(yytext);
-	if (yy->port == 0 || yy->port >= 65536) {
-		syslog(LOG_ERR, "bind port missing or out of range\n");
+full-port  =  port proto {
+	char const *proto = yy->tmpProto == protoTcp ? "tcp" : "udp";
+	struct servent *service = getservbyname(yy->tmpPort, proto);
+	yy->tmpPortNum = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
+	if (yy->tmpPortNum == 0 || yy->tmpPortNum >= 65536) {
+		syslog(LOG_ERR, "port %s/%s missing or out of range\n", yy->tmpPort, proto);
 		PARSE_ERROR;
 	}
 }
 
-auth  =  auth_key - < pattern > {
+port   = < (number | service) >   { yy->tmpPort = strdup(yytext); }
+proto  = '/tcp'                   { yy->tmpProto = protoTcp; }
+       | '/udp'                   { yy->tmpProto = protoUdp; }
+       | ''                       { yy->tmpProto = protoTcp; }
+
+rule  =  auth-key - < pattern > {
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
 	if (!allRules) {
@@ -138,7 +68,7 @@ auth  =  auth_key - < pattern > {
 	++allRulesCount;
 }
 
-auth_key = < ("allow" | "deny") >         { yy->isAuthAllow = (yytext[0] == 'a'); }
+auth-key = < ("allow" | "deny") >         { yy->isAuthAllow = (yytext[0] == 'a'); }
 
 logfile  =  "logfile" - < filename > {
 	logFileName = strdup(yytext);
@@ -158,7 +88,7 @@ logcommon  =  "logcommon" {
 	logFormatCommon = 1;
 }
 
-invalid_syntax  =  < (!eol .)* > eol { PARSE_ERROR; /* FIXME */ }
+invalid-syntax  =  < (!eol .)* > eol { PARSE_ERROR; /* FIXME */ }
 
 service  =  name
 ipv4     =  number [.] number [.] number [.] number | '0'

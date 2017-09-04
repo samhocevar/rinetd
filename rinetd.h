@@ -30,7 +30,7 @@ struct _server_info {
 
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
-	int fromPort, toPort;
+	int fromPort, fromProto, toPort, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
@@ -41,6 +41,7 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
+	int proto;
 	/* recv: received on this socket
 		sent: sent to this socket from the other buffer */
 	int recvPos, sentPos;

@@ -108,6 +108,11 @@ char *pidLogFileName = NULL;
 int logFormatCommon = 0;
 FILE *logFile = NULL;
 
+enum {
+	protoTcp = 1,
+	protoUdp = 2,
+};
+
 char const *logMessages[] = {
         "unknown-error",
 	"done-local-closed",
@@ -121,8 +126,7 @@ char const *logMessages[] = {
 	"denied",
 };
 
-enum
-{
+enum {
 	logUnknownError = 0,
 	logLocalClosedFirst,
 	logRemoteClosedFirst,
@@ -151,9 +155,10 @@ static int getAddress(char const *host, struct in_addr *iaddr);
 static void refuse(ConnectionInfo *cnx, int logCode);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
-static int getConfLine(FILE *in, char *line, int space, int *lnum);
 static void clearConfiguration(void);
 static void readConfiguration(char const *file);
+static void addServer(char *bindAddress, int bindPort, int bindProto,
+                      char *connectAddress, int connectPort, int connectProto);
 
 static void registerPID(void);
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
@@ -297,27 +302,91 @@ lowMemory:
 	exit(1);
 }
 
-static int getConfLine(FILE *in, char *line, int space, int *lnum)
-{
-	while (1) {
-		(*lnum)++;
-		if (!fgets(line, space, in)) {
-			return 0;
-		}
-		char const *p = line;
-		while (isspace(*p)) {
-			p++;
-		}
-		if (!(*p)) {
-			/* Blank lines are OK */
-			continue;
-		}
-		if (*p == '#') {
-			/* Comment lines are also OK */
-			continue;
-		}
-		return 1;
+void addServer(char *bindAddress, int bindPort, int bindProto,
+               char *connectAddress, int connectPort, int connectProto) {
+	/* Turn all of this stuff into reasonable addresses */
+	struct in_addr iaddr;
+	if (getAddress(bindAddress, &iaddr) < 0) {
+		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
+			bindAddress);
+		PARSE_ERROR;
 	}
+	/* Make a server socket */
+	SOCKET fd = socket(PF_INET,
+	                   bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
+	                   bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
+	if (fd == INVALID_SOCKET) {
+		syslog(LOG_ERR, "couldn't create "
+			"server socket! (%m)\n");
+		PARSE_ERROR;
+	}
+	struct sockaddr_in saddr;
+	saddr.sin_family = AF_INET;
+	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
+	saddr.sin_port = htons(bindPort);
+	int tmp = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+		(const char *) &tmp, sizeof(tmp));
+	if (bind(fd, (struct sockaddr *)
+		&saddr, sizeof(saddr)) == SOCKET_ERROR)
+	{
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "couldn't bind to "
+			"address %s port %d (%m)\n",
+			bindAddress, bindPort);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+	if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "couldn't listen to "
+			"address %s port %d (%m)\n",
+			bindAddress, bindPort);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+#if _WIN32
+	u_long ioctltmp;
+#else
+	int ioctltmp;
+#endif
+	ioctlsocket(fd, FIONBIO, &ioctltmp);
+	if (getAddress(connectAddress, &iaddr) < 0) {
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "host %s could not be resolved.\n",
+			bindAddress);
+		closesocket(fd);
+		PARSE_ERROR;
+	}
+	/* Allocate server info */
+	seInfo = (ServerInfo *)
+		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+	if (!seInfo) {
+		PARSE_ERROR;
+	}
+	ServerInfo *srv = &seInfo[seTotal];
+	memset(srv, 0, sizeof(*srv));
+	srv->fd = fd;
+	srv->localAddr = iaddr;
+	srv->localPort = htons(connectPort);
+	srv->fromHost = bindAddress;
+	if (!srv->fromHost) {
+		PARSE_ERROR;
+	}
+	srv->fromPort = bindPort;
+	srv->fromProto = bindProto;
+	srv->toHost = connectAddress;
+	if (!srv->toHost) {
+		PARSE_ERROR;
+	}
+	srv->toPort = connectPort;
+	srv->toProto = connectProto;
+#ifndef _WIN32
+	if (fd > maxfd) {
+		maxfd = fd;
+	}
+#endif
+	++seTotal;
 }
 
 static void setConnectionCount(int newCount)
@@ -588,9 +657,11 @@ static void handleAccept(ServerInfo const *srv)
 #endif
 
 	cnx->local.fd = INVALID_SOCKET;
+	cnx->local.proto = srv->toProto;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.recvBytes = cnx->local.sentBytes = 0;
 	cnx->remote.fd = nfd;
+	cnx->remote.proto = srv->fromProto;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
 	cnx->coClosing = 0;
@@ -657,7 +728,9 @@ static void handleAccept(ServerInfo const *srv)
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	struct sockaddr_in saddr;
-	cnx->local.fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	cnx->local.fd = srv->toProto == protoTcp
+		? socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)
+		: socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m");
 		closesocket(cnx->remote.fd);
