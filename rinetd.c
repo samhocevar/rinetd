@@ -1,3 +1,11 @@
+/* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
+                         and Boutell.Com, Inc.
+             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+
+   This software is released for free use under the terms of
+   the GNU Public License, version 2 or higher. NO WARRANTY
+   IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK. */
+
 #if HAVE_CONFIG_H
 #	include <config.h>
 #endif
@@ -7,27 +15,9 @@
 #endif
 
 #if _WIN32
-	/* Define this to a reasonably large value */
-#	define FD_SETSIZE 4096
-#	include <winsock2.h>
-#	include <windows.h>
 #	include "getopt.h"
-#	define syslog fprintf
-#	define LOG_ERR stderr
-#	define LOG_INFO stdout
 #else
-#	include <sys/types.h>
-#	include <sys/socket.h>
-#	include <sys/ioctl.h>
-#	include <unistd.h>
-#	include <netdb.h>
-#	include <netinet/in.h>
-#	include <arpa/inet.h>
 #	include <getopt.h>
-#	include <errno.h>
-#	include <syslog.h>
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
 #	if TIME_WITH_SYS_TIME
 #		include <sys/time.h>
 #		include <time.h>
@@ -46,43 +36,17 @@
 #endif
 #include <ctype.h>
 
-#if _WIN32
-	/* _WIN32 doesn't really have WSAEAGAIN */
-#	ifndef WSAEAGAIN
-#		define WSAEAGAIN WSAEWOULDBLOCK
-#	endif
-#else
-	/* Windows sockets compatibility defines */
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
-static inline int closesocket(int s) {
-	return close(s);
-}
-#	define ioctlsocket ioctl
-#	define WSAEWOULDBLOCK EWOULDBLOCK
-#	define WSAEAGAIN EAGAIN
-#	define WSAEINPROGRESS EINPROGRESS
-#	define WSAEINTR EINTR
-#	define SOCKET int
-static inline int GetLastError(void) {
-	return errno;
-}
-#endif /* _WIN32 */
-
 #ifdef DEBUG
 #	define PERROR perror
 #else
 #	define PERROR(x)
 #endif /* DEBUG */
 
-/* We've got to get FIONBIO from somewhere. Try the Solaris location
-	if it isn't defined yet by the above includes. */
-#ifndef FIONBIO
-#	include <sys/filio.h>
-#endif /* FIONBIO */
-
 #include "match.h"
+#include "networking.h"
+#include "types.h"
 #include "rinetd.h"
+#include "parse.h"
 
 Rule *allRules = NULL;
 int allRulesCount = 0;
@@ -107,11 +71,6 @@ char *logFileName = NULL;
 char *pidLogFileName = NULL;
 int logFormatCommon = 0;
 FILE *logFile = NULL;
-
-enum {
-	protoTcp = 1,
-	protoUdp = 2,
-};
 
 char const *logMessages[] = {
         "unknown-error",
@@ -157,14 +116,10 @@ static void refuse(ConnectionInfo *cnx, int logCode);
 static int readArgs (int argc, char **argv, RinetdOptions *options);
 static void clearConfiguration(void);
 static void readConfiguration(char const *file);
-static void addServer(char *bindAddress, int bindPort, int bindProto,
-                      char *connectAddress, int connectPort, int connectProto);
 
 static void registerPID(void);
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
 static struct tm *get_gmtoff(int *tz);
-
-#include "parse.h"
 
 /* Signal handlers */
 #if !HAVE_SIGACTION && !_WIN32
@@ -268,19 +223,7 @@ static void clearConfiguration(void) {
 static void readConfiguration(char const *file) {
 
 	/* Parse the configuration file. */
-	FILE *in = fopen(file, "r");
-	if (!in) {
-		goto lowMemory;
-	}
-	yycontext ctx;
-	memset(&ctx, 0, sizeof(yycontext));
-	ctx.fp = in;
-	if (!yyparse(&ctx)) {
-		syslog(LOG_ERR, "invalid syntax "
-			"on file %s, line %d.\n", file, -1);
-		exit(1);
-	}
-	fclose(in);
+	parseConfiguration(file);
 
 	/* Open the log file */
 	if (logFile) {
@@ -296,10 +239,6 @@ static void readConfiguration(char const *file) {
 				logFileName);
 		}
 	}
-	return;
-lowMemory:
-	syslog(LOG_ERR, "not enough memory to start rinetd.\n");
-	exit(1);
 }
 
 void addServer(char *bindAddress, int bindPort, int bindProto,
@@ -309,7 +248,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 	if (getAddress(bindAddress, &iaddr) < 0) {
 		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
 			bindAddress);
-		PARSE_ERROR;
+		exit(1);
 	}
 	/* Make a server socket */
 	SOCKET fd = socket(PF_INET,
@@ -318,7 +257,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 	if (fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "couldn't create "
 			"server socket! (%m)\n");
-		PARSE_ERROR;
+		exit(1);
 	}
 	struct sockaddr_in saddr;
 	saddr.sin_family = AF_INET;
@@ -335,7 +274,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 			"address %s port %d (%m)\n",
 			bindAddress, bindPort);
 		closesocket(fd);
-		PARSE_ERROR;
+		exit(1);
 	}
 	if (bindProto == protoTcp) {
 		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
@@ -344,7 +283,6 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 				"address %s port %d (%m)\n",
 				bindAddress, bindPort);
 			closesocket(fd);
-			PARSE_ERROR;
 		}
 	}
 #if _WIN32
@@ -358,13 +296,13 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 		syslog(LOG_ERR, "host %s could not be resolved.\n",
 			bindAddress);
 		closesocket(fd);
-		PARSE_ERROR;
+		exit(1);
 	}
 	/* Allocate server info */
 	seInfo = (ServerInfo *)
 		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
 	if (!seInfo) {
-		PARSE_ERROR;
+		exit(1);
 	}
 	ServerInfo *srv = &seInfo[seTotal];
 	memset(srv, 0, sizeof(*srv));
@@ -373,13 +311,13 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 	srv->localPort = htons(connectPort);
 	srv->fromHost = bindAddress;
 	if (!srv->fromHost) {
-		PARSE_ERROR;
+		exit(1);
 	}
 	srv->fromPort = bindPort;
 	srv->fromProto = bindProto;
 	srv->toHost = connectAddress;
 	if (!srv->toHost) {
-		PARSE_ERROR;
+		exit(1);
 	}
 	srv->toPort = connectPort;
 	srv->toProto = connectProto;

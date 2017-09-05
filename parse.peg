@@ -1,18 +1,42 @@
+#  Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
+#                        and Boutell.Com, Inc.
+#            © 2003—2017 Sam Hocevar <sam@hocevar.net>
+#
+#  This software is released for free use under the terms of
+#  the GNU Public License, version 2 or higher. NO WARRANTY
+#  IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK. */
+
 %{
+#if HAVE_CONFIG_H
+#	include <config.h>
+#endif
+
+#include "networking.h"
+#include "types.h"
+#include "rinetd.h"
+#include "parse.h"
+
 #define YY_CTX_LOCAL 1
 #define YY_CTX_MEMBERS \
-    FILE *fp; \
-    int isAuthAllow; \
-    char *tmpPort; \
-    int tmpPortNum, tmpProto; \
-    int bindPortNum, bindProto, connectPortNum, connectProto; \
-    char *bindAddress, *connectAddress;
+	FILE *fp; \
+	int isAuthAllow; \
+	char *tmpPort; \
+	int tmpPortNum, tmpProto; \
+	int bindPortNum, bindProto, connectPortNum, connectProto; \
+	char *bindAddress, *connectAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
-    int yyc = fgetc(yyctx->fp); \
-    result = (EOF == yyc) ? 0 : (*(buf) = yyc, 1); \
+	int yyc = fgetc(yyctx->fp); \
+	result = (EOF == yyc) ? 0 : (*(buf) = yyc, 1); \
 }
 #define PARSE_ERROR exit(1);
+
+#if defined __clang__
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#elif defined __GNUC__
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 %}
 
 file     =  (line | invalid-syntax)*
@@ -103,4 +127,27 @@ filename =  '"' [^"]+ '"'
 digit    =  [0-9]
 eol      =  '\r'? '\n' | eof
 eof      =  '\0'
+
+%%
+
+void parseConfiguration(char const *file) {
+	FILE *in = fopen(file, "r");
+	if (!in) {
+		PARSE_ERROR;
+	}
+
+	yycontext ctx;
+	memset(&ctx, 0, sizeof(yycontext));
+	ctx.fp = in;
+	if (!yyparse(&ctx)) {
+		syslog(LOG_ERR, "invalid syntax "
+			"on file %s, line %d.\n", file, -1);
+		exit(1);
+	}
+
+	fclose(in);
+
+	/* Avopid warnings for these unused functions */
+	(void)yySet; (void)yyPush; (void)yyPop; (void)yyAccept;
+}
 

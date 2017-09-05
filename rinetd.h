@@ -1,3 +1,24 @@
+/* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
+                         and Boutell.Com, Inc.
+             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+
+   This software is released for free use under the terms of
+   the GNU Public License, version 2 or higher. NO WARRANTY
+   IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK. */
+
+#pragma once
+
+/* Syslog feature */
+
+#if _WIN32
+#	include <stdio.h>
+#	define syslog fprintf
+#	define LOG_ERR stderr
+#	define LOG_INFO stdout
+#else
+#	include <syslog.h>
+#endif /* _WIN32 */
+
 /* Constants */
 
 static int const RINETD_BUFFER_SIZE = 16384;
@@ -6,65 +27,22 @@ static int const RINETD_LISTEN_BACKLOG = 128;
 #define RINETD_CONFIG_FILE "/etc/rinetd.conf"
 #define RINETD_PID_FILE "/var/run/rinetd.pid"
 
-/* Program state */
+/* Global configuration */
 
-enum ruleType {
-	allowRule,
-	denyRule,
-};
+extern Rule *allRules;
+extern int allRulesCount;
+extern int globalRulesCount;
 
-typedef struct _rule Rule;
-struct _rule
-{
-	char *pattern;
-	int type;
-};
+extern ServerInfo *seInfo;
+extern int seTotal;
 
-typedef struct _server_info ServerInfo;
-struct _server_info {
-	SOCKET fd;
+extern char *logFileName;
+extern char *pidLogFileName;
+extern int logFormatCommon;
+extern FILE *logFile;
 
-	/* In network order, for network purposes */
-	struct in_addr localAddr;
-	unsigned short localPort;
+/* Functions */
 
-	/* In ASCII and local byte order, for logging purposes */
-	char *fromHost, *toHost;
-	int fromPort, fromProto, toPort, toProto;
-
-	/* Offset and count into list of allow and deny rules. Any rules
-		prior to globalAllowRules and globalDenyRules are global rules. */
-	int rulesStart, rulesCount;
-};
-
-typedef struct _socket Socket;
-struct _socket
-{
-	SOCKET fd;
-	int proto;
-	/* recv: received on this socket
-		sent: sent to this socket from the other buffer */
-	int recvPos, sentPos;
-	int recvBytes, sentBytes;
-	char *buffer;
-};
-
-typedef struct _connection_info ConnectionInfo;
-struct _connection_info
-{
-	Socket remote, local;
-	struct in_addr reAddresses;
-	int coClosing;
-	int coLog;
-	ServerInfo const *server; // only useful for logEvent
-};
-
-/* Option parsing */
-
-typedef struct _rinetd_options RinetdOptions;
-struct _rinetd_options
-{
-	char const *conf_file;
-	int foreground;
-};
+void addServer(char *bindAddress, int bindPort, int bindProto,
+               char *connectAddress, int connectPort, int connectProto);
 
