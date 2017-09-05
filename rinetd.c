@@ -337,13 +337,15 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 		closesocket(fd);
 		PARSE_ERROR;
 	}
-	if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "couldn't listen to "
-			"address %s port %d (%m)\n",
-			bindAddress, bindPort);
-		closesocket(fd);
-		PARSE_ERROR;
+	if (bindProto == protoTcp) {
+		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+			/* Warn -- don't exit. */
+			syslog(LOG_ERR, "couldn't listen to "
+				"address %s port %d (%m)\n",
+				bindAddress, bindPort);
+			closesocket(fd);
+			PARSE_ERROR;
+		}
 	}
 #if _WIN32
 	u_long ioctltmp;
