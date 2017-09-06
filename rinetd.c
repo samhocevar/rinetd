@@ -113,7 +113,6 @@ static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
 static int getAddress(char const *host, struct in_addr *iaddr);
 static int checkConnectionAllowed(ConnectionInfo const *cnx);
-static void refuse(ConnectionInfo *cnx, int logCode);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
 static void clearConfiguration(void);
@@ -618,7 +617,11 @@ static void handleAccept(ServerInfo const *srv)
 
 	int logCode = checkConnectionAllowed(cnx);
 	if (logCode != logAllowed) {
-		refuse(cnx, logCode);
+		/* Local fd is not open yet, so only
+			close the remote socket. */
+		closesocket(cnx->remote.fd);
+		cnx->remote.fd = INVALID_SOCKET;
+		logEvent(cnx, cnx->server, logCode);
 		return;
 	}
 
@@ -757,15 +760,6 @@ static int checkConnectionAllowed(ConnectionInfo const *cnx)
 	}
 
 	return logAllowed;
-}
-
-static void refuse(ConnectionInfo *cnx, int logCode)
-{
-	/* Local fd is not open yet when we refuse(), so only
-		close the remote socket. */
-	closesocket(cnx->remote.fd);
-	cnx->remote.fd = INVALID_SOCKET;
-	logEvent(cnx, cnx->server, logCode);
 }
 
 static int getAddress(char const *host, struct in_addr *iaddr)
