@@ -19,6 +19,7 @@
 #define YY_CTX_LOCAL 1
 #define YY_CTX_MEMBERS \
 	FILE *fp; \
+	int currentLine; \
 	int isAuthAllow; \
 	char *tmpPort; \
 	int tmpPortNum, tmpProto; \
@@ -33,14 +34,16 @@
 
 #if defined __clang__
 #pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wunused-label"
 #elif defined __GNUC__
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-label"
 #endif
 
 %}
 
-file     =  (line | invalid-syntax)*
-line     =  -? (command -?)? comment? eol
+file     =  (sol (line eol | invalid-syntax))*
+line     =  -? (command -?)? comment?
 command  =  (server | rule | logfile | pidlogfile | logcommon)
 comment  =  "#" (!eol .)*
 
@@ -112,7 +115,11 @@ logcommon  =  "logcommon" {
 	logFormatCommon = 1;
 }
 
-invalid-syntax  =  < (!eol .)* > eol { PARSE_ERROR; /* FIXME */ }
+invalid_syntax  =  < (!eol .)+ > eol {
+	fprintf(stderr, "rinetd: invalid syntax at line %d: %s\n",
+	        yy->currentLine, yytext);
+	PARSE_ERROR; /* FIXME */
+}
 
 service  =  name
 ipv4     =  number [.] number [.] number [.] number | '0'
@@ -125,6 +132,7 @@ filename =  '"' [^"]+ '"'
 
 -        =  [ \t]+
 digit    =  [0-9]
+sol      =  { ++yy->currentLine; }
 eol      =  '\r'? '\n' | eof
 eof      =  '\0'
 
