@@ -155,7 +155,7 @@ static int getConfLine(FILE *in, char *line, int space, int *lnum);
 static void clearConfiguration(void);
 static void readConfiguration(char const *file);
 
-static void registerPID(void);
+static void registerPID(char const *pid_file_name);
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
 static struct tm *get_gmtoff(int *tz);
 
@@ -216,7 +216,9 @@ int main(int argc, char *argv[])
 	signal(SIGTERM, quit);
 
 	readConfiguration(options.conf_file);
-	registerPID();
+	if (pidLogFileName || !options.foreground) {
+		registerPID(pidLogFileName ? pidLogFileName : RINETD_PID_FILE);
+	}
 
 	syslog(LOG_INFO, "Starting redirections...");
 	while (1) {
@@ -822,14 +824,9 @@ RETSIGTYPE quit(int s)
 	exit(0);
 }
 
-void registerPID(void)
+void registerPID(char const *pid_file_name)
 {
-	char const *pid_file_name = RINETD_PID_FILE;
-	if (pidLogFileName) {
-		pid_file_name = pidLogFileName;
-	}
-/* add other systems with wherever they register processes */
-#if	defined(__linux__)
+#if defined(__linux__)
 	FILE *pid_file = fopen(pid_file_name, "w");
 	if (pid_file == NULL) {
 		/* non-fatal, non-Linux may lack /var/run... */
@@ -847,8 +844,9 @@ error:
 	syslog(LOG_ERR, "Couldn't write to "
 		"%s. PID was not logged (%m).\n", pid_file_name);
 #else
+	/* add other systems with wherever they register processes */
 	(void)pid_file_name;
-#endif	/* __linux__ */
+#endif
 }
 
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result)
