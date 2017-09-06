@@ -660,15 +660,13 @@ static void handleAccept(ServerInfo const *srv)
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
 
-#ifndef _WIN32
-#ifdef __linux__
+#if defined __linux__
 	int tmp = 0;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#else
+#elif !defined _WIN32
 	int tmp = 1024;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
-#endif /* __linux__ */
-#endif /* _WIN32 */
+#endif
 
 	FIONBIO_ARG_T ioctltmp = 1;
 	ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
