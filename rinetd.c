@@ -94,6 +94,7 @@ enum {
 	logLocalBindFailed,
 	logLocalConnectFailed,
 	logOpened,
+	logAllowed,
 	logNotAllowed,
 	logDenied,
 };
@@ -111,6 +112,7 @@ static void handleAccept(ServerInfo const *srv);
 static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
 static int getAddress(char const *host, struct in_addr *iaddr);
+static int checkConnectionAllowed(ConnectionInfo const *cnx);
 static void refuse(ConnectionInfo *cnx, int logCode);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
@@ -570,7 +572,6 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	struct sockaddr addr;
-	struct in_addr address;
 #if HAVE_SOCKLEN_T
 	socklen_t addrlen;
 #else
@@ -604,66 +605,17 @@ static void handleAccept(ServerInfo const *srv)
 	cnx->remote.proto = srv->fromProto;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
+	cnx->reAddresses.s_addr = ((struct sockaddr_in *)&addr)->sin_addr.s_addr;
 	cnx->coClosing = 0;
 	cnx->coLog = logUnknownError;
 	cnx->server = srv;
 
-	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
-	cnx->reAddresses.s_addr = address.s_addr = sin->sin_addr.s_addr;
-	char const *addressText = inet_ntoa(address);
+	int logCode = checkConnectionAllowed(cnx);
+	if (logCode != logAllowed) {
+		refuse(cnx, logCode);
+		return;
+	}
 
-	/* 1. Check global allow rules. If there are no
-		global allow rules, it's presumed OK at
-		this step. If there are any, and it doesn't
-		match at least one, kick it out. */
-	int good = 1;
-	for (int j = 0; j < globalRulesCount; ++j) {
-		if (allRules[j].type == allowRule) {
-			good = 0;
-			if (match(addressText, allRules[j].pattern)) {
-				good = 1;
-				break;
-			}
-		}
-	}
-	if (!good) {
-		refuse(cnx, logNotAllowed);
-		return;
-	}
-	/* 2. Check global deny rules. If it matches
-		any of the global deny rules, kick it out. */
-	for (int j = 0; j < globalRulesCount; ++j) {
-		if (allRules[j].type == denyRule
-			&& match(addressText, allRules[j].pattern)) {
-			refuse(cnx, logDenied);
-		}
-	}
-	/* 3. Check allow rules specific to this forwarding rule.
-		If there are none, it's OK. If there are any,
-		it must match at least one. */
-	good = 1;
-	for (int j = 0; j < srv->rulesCount; ++j) {
-		if (allRules[srv->rulesStart + j].type == allowRule) {
-			good = 0;
-			if (match(addressText,
-				allRules[srv->rulesStart + j].pattern)) {
-				good = 1;
-				break;
-			}
-		}
-	}
-	if (!good) {
-		refuse(cnx, logNotAllowed);
-		return;
-	}
-	/* 4. Check deny rules specific to this forwarding rule. If
-		it matches any of the deny rules, kick it out. */
-	for (int j = 0; j < srv->rulesCount; ++j) {
-		if (allRules[srv->rulesStart + j].type == denyRule
-			&& match(addressText, allRules[srv->rulesStart + j].pattern)) {
-			refuse(cnx, logDenied);
-		}
-	}
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
@@ -738,6 +690,67 @@ static void handleAccept(ServerInfo const *srv)
 #endif /* _WIN32 */
 
 	logEvent(cnx, srv, logOpened);
+}
+
+static int checkConnectionAllowed(ConnectionInfo const *cnx)
+{
+	ServerInfo const *srv = cnx->server;
+	struct in_addr address;
+	address.s_addr = cnx->reAddresses.s_addr;
+	char const *addressText = inet_ntoa(address);
+
+	/* 1. Check global allow rules. If there are no
+		global allow rules, it's presumed OK at
+		this step. If there are any, and it doesn't
+		match at least one, kick it out. */
+	int good = 1;
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == allowRule) {
+			good = 0;
+			if (match(addressText, allRules[j].pattern)) {
+				good = 1;
+				break;
+			}
+		}
+	}
+	if (!good) {
+		return logNotAllowed;
+	}
+	/* 2. Check global deny rules. If it matches
+		any of the global deny rules, kick it out. */
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == denyRule
+			&& match(addressText, allRules[j].pattern)) {
+			return logDenied;
+		}
+	}
+	/* 3. Check allow rules specific to this forwarding rule.
+		If there are none, it's OK. If there are any,
+		it must match at least one. */
+	good = 1;
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == allowRule) {
+			good = 0;
+			if (match(addressText,
+				allRules[srv->rulesStart + j].pattern)) {
+				good = 1;
+				break;
+			}
+		}
+	}
+	if (!good) {
+		return logNotAllowed;
+	}
+	/* 4. Check deny rules specific to this forwarding rule. If
+		it matches any of the deny rules, kick it out. */
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == denyRule
+			&& match(addressText, allRules[srv->rulesStart + j].pattern)) {
+			return logDenied;
+		}
+	}
+
+	return logAllowed;
 }
 
 static void refuse(ConnectionInfo *cnx, int logCode)
