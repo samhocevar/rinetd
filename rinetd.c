@@ -985,19 +985,17 @@ static int readArgs (int argc, char **argv, RinetdOptions *options)
 
 /* get_gmtoff was borrowed from Apache. Thanks folks. */
 
-static struct tm *get_gmtoff(int *tz) {
+static struct tm *get_gmtoff(int *tz)
+{
 	time_t tt = time(NULL);
-	struct tm gmt;
-	struct tm *t;
-	int days, hours, minutes;
 
 	/* Assume we are never more than 24 hours away. */
-	gmt = *gmtime(&tt); /* remember gmtime/localtime return ptr to static */
-	t = localtime(&tt); /* buffer... so be careful */
-	days = t->tm_yday - gmt.tm_yday;
-	hours = ((days < -1 ? 24 : 1 < days ? -24 : days * 24)
+	struct tm gmt = *gmtime(&tt); /* remember gmtime/localtime return ptr to static */
+	struct tm *t = localtime(&tt); /* buffer... so be careful */
+	int days = t->tm_yday - gmt.tm_yday;
+	int hours = ((days < -1 ? 24 : 1 < days ? -24 : days * 24)
 		+ t->tm_hour - gmt.tm_hour);
-	minutes = hours * 60 + t->tm_min - gmt.tm_min;
+	int minutes = hours * 60 + t->tm_min - gmt.tm_min;
 	*tz = minutes;
 	return t;
 }
