@@ -36,6 +36,18 @@
 #	include <sys/filio.h>
 #endif /* FIONBIO */
 
+#if HAVE_SOCKLEN_T
+#	define SOCKLEN_T socklen_t
+#else
+#	define SOCKLEN_T int
+#endif
+
+#if _WIN32
+#	define FIONBIO_ARG_T u_long
+#else
+#	define FIONBIO_ARG_T int
+#endif
+
 #if _WIN32
 	/* _WIN32 doesn't really have WSAEAGAIN */
 #	ifndef WSAEAGAIN

@@ -287,11 +287,8 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 			closesocket(fd);
 		}
 	}
-#if _WIN32
-	u_long ioctltmp;
-#else
-	int ioctltmp;
-#endif
+
+	FIONBIO_ARG_T ioctltmp;
 	ioctlsocket(fd, FIONBIO, &ioctltmp);
 	if (getAddress(connectAddress, &iaddr) < 0) {
 		/* Warn -- don't exit. */
@@ -543,8 +540,12 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket)
 {
 	cnx->coClosing = 1;
-	/* One end fizzled out, so make sure we're all done with that */
-	closesocket(socket->fd);
+	if (socket->proto == protoTcp) {
+		/* One end fizzled out, so make sure we're all done with that */
+		closesocket(socket->fd);
+	} else /* if (socket->proto == protoUdp) */ {
+		/* Nothing to do in UDP mode */
+	}
 	socket->fd = INVALID_SOCKET;
 	if (other_socket->fd != INVALID_SOCKET) {
 #ifndef __linux__
@@ -572,30 +573,35 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	struct sockaddr addr;
-#if HAVE_SOCKLEN_T
-	socklen_t addrlen;
-#else
-	int addrlen;
-#endif
-	addrlen = sizeof(addr);
-	SOCKET nfd = accept(srv->fd, &addr, &addrlen);
-	if (nfd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "accept(%d): %m", srv->fd);
-		logEvent(NULL, srv, logAcceptFailed);
-		return;
-	}
+	SOCKLEN_T addrlen = sizeof(addr);
 
-#if _WIN32
-	u_long ioctltmp;
-#else
-	int ioctltmp;
-#endif
-	ioctlsocket(nfd, FIONBIO, &ioctltmp);
+	SOCKET nfd;
+	/* Get remote address using accept() in TCP mode, recvfrom()
+		 in UDP mode. */
+	if (srv->fromProto == protoTcp) {
+		nfd = accept(srv->fd, &addr, &addrlen);
+		if (nfd == INVALID_SOCKET) {
+			syslog(LOG_ERR, "accept(%d): %m", srv->fd);
+			logEvent(NULL, srv, logAcceptFailed);
+			return;
+		}
 
+		FIONBIO_ARG_T ioctltmp;
+		ioctlsocket(nfd, FIONBIO, &ioctltmp);
 #ifndef _WIN32
-	int tmp = 0;
-	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+		int tmp = 0;
+		setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #endif
+	} else /* if (srv->fromProto == protoUdp) */ {
+		nfd = srv->fd;
+		ssize_t ret = recvfrom(srv->fd, NULL, 0, MSG_PEEK,
+					&addr, &addrlen);
+		if (ret < 0) {
+			syslog(LOG_ERR, "recvfrom(%d): %m", srv->fd);
+			logEvent(NULL, srv, logAcceptFailed);
+			return;
+		}
+	}
 
 	cnx->local.fd = INVALID_SOCKET;
 	cnx->local.proto = srv->toProto;
@@ -653,15 +659,15 @@ static void handleAccept(ServerInfo const *srv)
 
 #ifndef _WIN32
 #ifdef __linux__
-	tmp = 0;
+	int tmp = 0;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 #else
-	tmp = 1024;
+	int tmp = 1024;
 	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
 #endif /* __linux__ */
 #endif /* _WIN32 */
 
-	ioctltmp = 1;
+	FIONBIO_ARG_T ioctltmp = 1;
 	ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
 
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
