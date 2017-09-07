@@ -58,7 +58,7 @@ typedef struct _connection_info ConnectionInfo;
 struct _connection_info
 {
 	Socket remote, local;
-	struct in_addr reAddresses;
+	struct sockaddr_in remoteAddress;
 	int coClosing;
 	int coLog;
 	ServerInfo const *server; // only useful for logEvent
