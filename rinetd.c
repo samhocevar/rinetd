@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
 	readConfiguration(options.conf_file);
 	registerPID();
 
-	syslog(LOG_INFO, "Starting redirections...");
+	syslog(LOG_INFO, "Starting redirections...\n");
 	while (1) {
 		selectPass();
 	}
@@ -401,8 +401,8 @@ static ConnectionInfo *findAvailableConnection(void)
 	return &coInfo[oldTotal];
 }
 
-static void selectPass(void) {
-
+static void selectPass(void)
+{
 	int const fdSetCount = maxfd / FD_SETSIZE + 1;
 #	define FD_ZERO_EXT(ar) for (int i = 0; i < fdSetCount; ++i) { FD_ZERO(&(ar)[i]); }
 #ifdef _WIN32
@@ -547,8 +547,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	}
 	socket->fd = INVALID_SOCKET;
 	if (other_socket->fd != INVALID_SOCKET) {
-#ifndef __linux__
-#ifndef _WIN32
+#if !defined __linux__ && !defined _WIN32
 		/* Now set up the other end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
@@ -557,8 +556,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		int arg = 1024;
 		setsockopt(other_socket->fd, SOL_SOCKET, SO_SNDLOWAT,
 			&arg, sizeof(arg));
-#endif /* _WIN32 */
-#endif /* __linux__ */
+#endif
 		cnx->coLog = socket == &cnx->local ?
 			logLocalClosedFirst : logRemoteClosedFirst;
 	}
@@ -580,7 +578,7 @@ static void handleAccept(ServerInfo const *srv)
 	if (srv->fromProto == protoTcp) {
 		nfd = accept(srv->fd, &addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
-			syslog(LOG_ERR, "accept(%d): %m", srv->fd);
+			syslog(LOG_ERR, "accept(%d): %m\n", srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -596,7 +594,7 @@ static void handleAccept(ServerInfo const *srv)
 		ssize_t ret = recvfrom(srv->fd, NULL, 0, MSG_PEEK,
 					&addr, &addrlen);
 		if (ret < 0) {
-			syslog(LOG_ERR, "recvfrom(%d): %m", srv->fd);
+			syslog(LOG_ERR, "recvfrom(%d): %m\n", srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -633,7 +631,7 @@ static void handleAccept(ServerInfo const *srv)
 		? socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)
 		: socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (cnx->local.fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "socket(): %m");
+		syslog(LOG_ERR, "socket(): %m\n");
 		closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, srv, logLocalSocketFailed);
@@ -806,7 +804,7 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 		msg = "A temporary error occurred on an authoritative name server.  Try again later.";
 		break;
 	}
-	syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
+	syslog(LOG_ERR, "While resolving `%s' got: %s\n", host, msg);
 	return -1;
 }
 
@@ -822,7 +820,7 @@ RETSIGTYPE plumber(int s)
 RETSIGTYPE hup(int s)
 {
 	(void)s;
-	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
+	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...\n");
 	/* Learn the new rules */
 	clearConfiguration();
 	readConfiguration(options.conf_file);
@@ -910,7 +908,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	}
 
 	if (result==logNotAllowed || result==logDenied)
-		syslog(LOG_INFO, "%s %s"
+		syslog(LOG_INFO, "%s %s\n"
 			, addressText
 			, logMessages[result]);
 	if (logFile) {
