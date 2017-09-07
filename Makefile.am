@@ -8,7 +8,7 @@ man_MANS = rinetd.8
 sysconf_DATA = rinetd.conf
 
 sbin_PROGRAMS = rinetd
-rinetd_SOURCES = rinetd.c rinetd.h parse.c match.c match.h
+rinetd_SOURCES = rinetd.c rinetd.h parse.c parse.h match.c match.h net.c net.h
 
 GENERATED_SOURCES = parse.c
 

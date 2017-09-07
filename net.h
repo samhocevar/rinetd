@@ -60,7 +60,6 @@
 static inline int closesocket(int s) {
 	return close(s);
 }
-#	define ioctlsocket ioctl
 #	define WSAEWOULDBLOCK EWOULDBLOCK
 #	define WSAEAGAIN EAGAIN
 #	define WSAEINPROGRESS EINPROGRESS
@@ -70,4 +69,6 @@ static inline int GetLastError(void) {
 	return errno;
 }
 #endif /* _WIN32 */
+
+void setSocketDefaults(SOCKET fd);
 

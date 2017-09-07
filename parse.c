@@ -10,7 +10,7 @@
 #	include <config.h>
 #endif
 
-#include "networking.h"
+#include "net.h"
 #include "types.h"
 #include "rinetd.h"
 #include "parse.h"

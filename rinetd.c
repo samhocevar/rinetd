@@ -43,7 +43,7 @@
 #endif /* DEBUG */
 
 #include "match.h"
-#include "networking.h"
+#include "net.h"
 #include "types.h"
 #include "rinetd.h"
 #include "parse.h"
@@ -287,8 +287,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 			closesocket(fd);
 		}
 
-		FIONBIO_ARG_T ioctltmp;
-		ioctlsocket(fd, FIONBIO, &ioctltmp);
+		setSocketDefaults(fd);
 	}
 
 	if (getAddress(connectAddress, &iaddr) < 0) {
@@ -584,12 +583,7 @@ static void handleAccept(ServerInfo const *srv)
 			return;
 		}
 
-		FIONBIO_ARG_T ioctltmp;
-		ioctlsocket(nfd, FIONBIO, &ioctltmp);
-#ifndef _WIN32
-		int tmp = 0;
-		setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#endif
+		setSocketDefaults(nfd);
 	} else /* if (srv->fromProto == protoUdp) */ {
 		/* In UDP mode, get remote address using recvfrom() and check
 			for an existing connection from this client. */
@@ -687,18 +681,8 @@ static void handleAccept(ServerInfo const *srv)
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
 
-	if (srv->toProto == protoTcp) {
-		FIONBIO_ARG_T ioctltmp = 1;
-		ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
-
-#if defined __linux__
-		int tmp = 0;
-		setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#elif !defined _WIN32
-		int tmp = 1024;
-		setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
-#endif
-	}
+	if (srv->toProto == protoTcp)
+		setSocketDefaults(cnx->local.fd);
 
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
