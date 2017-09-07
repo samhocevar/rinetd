@@ -277,6 +277,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 		closesocket(fd);
 		exit(1);
 	}
+
 	if (bindProto == protoTcp) {
 		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
 			/* Warn -- don't exit. */
@@ -285,10 +286,11 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 				bindAddress, bindPort);
 			closesocket(fd);
 		}
+
+		FIONBIO_ARG_T ioctltmp;
+		ioctlsocket(fd, FIONBIO, &ioctltmp);
 	}
 
-	FIONBIO_ARG_T ioctltmp;
-	ioctlsocket(fd, FIONBIO, &ioctltmp);
 	if (getAddress(connectAddress, &iaddr) < 0) {
 		/* Warn -- don't exit. */
 		syslog(LOG_ERR, "host %s could not be resolved.\n",
@@ -685,16 +687,18 @@ static void handleAccept(ServerInfo const *srv)
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
 
-#if defined __linux__
-	int tmp = 0;
-	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#elif !defined _WIN32
-	int tmp = 1024;
-	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
-#endif
+	if (srv->toProto == protoTcp) {
+		FIONBIO_ARG_T ioctltmp = 1;
+		ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
 
-	FIONBIO_ARG_T ioctltmp = 1;
-	ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
+#if defined __linux__
+		int tmp = 0;
+		setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+#elif !defined _WIN32
+		int tmp = 1024;
+		setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
+#endif
+	}
 
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
