@@ -10,7 +10,7 @@ sysconf_DATA = rinetd.conf
 sbin_PROGRAMS = rinetd
 rinetd_SOURCES = rinetd.c rinetd.h parse.h match.c match.h
 
-GENERATED_SOURCES = parse.h
+BUILT_SOURCES = parse.h
 
 # If peg/leg is available, regenerate parse.h
 parse.h: parse.peg
