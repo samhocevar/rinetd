@@ -1,3 +1,11 @@
+/* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
+                         and Boutell.Com, Inc.
+             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+
+   This software is released for free use under the terms of
+   the GNU Public License, version 2 or higher. NO WARRANTY
+   IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK. */
+
 #if HAVE_CONFIG_H
 #	include <config.h>
 #endif
@@ -7,27 +15,9 @@
 #endif
 
 #if _WIN32
-	/* Define this to a reasonably large value */
-#	define FD_SETSIZE 4096
-#	include <winsock2.h>
-#	include <windows.h>
 #	include "getopt.h"
-#	define syslog fprintf
-#	define LOG_ERR stderr
-#	define LOG_INFO stdout
 #else
-#	include <sys/types.h>
-#	include <sys/socket.h>
-#	include <sys/ioctl.h>
-#	include <unistd.h>
-#	include <netdb.h>
-#	include <netinet/in.h>
-#	include <arpa/inet.h>
 #	include <getopt.h>
-#	include <errno.h>
-#	include <syslog.h>
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
 #	if TIME_WITH_SYS_TIME
 #		include <sys/time.h>
 #		include <time.h>
@@ -46,43 +36,17 @@
 #endif
 #include <ctype.h>
 
-#if _WIN32
-	/* _WIN32 doesn't really have WSAEAGAIN */
-#	ifndef WSAEAGAIN
-#		define WSAEAGAIN WSAEWOULDBLOCK
-#	endif
-#else
-	/* Windows sockets compatibility defines */
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
-static inline int closesocket(int s) {
-	return close(s);
-}
-#	define ioctlsocket ioctl
-#	define WSAEWOULDBLOCK EWOULDBLOCK
-#	define WSAEAGAIN EAGAIN
-#	define WSAEINPROGRESS EINPROGRESS
-#	define WSAEINTR EINTR
-#	define SOCKET int
-static inline int GetLastError(void) {
-	return errno;
-}
-#endif /* _WIN32 */
-
 #ifdef DEBUG
 #	define PERROR perror
 #else
 #	define PERROR(x)
 #endif /* DEBUG */
 
-/* We've got to get FIONBIO from somewhere. Try the Solaris location
-	if it isn't defined yet by the above includes. */
-#ifndef FIONBIO
-#	include <sys/filio.h>
-#endif /* FIONBIO */
-
 #include "match.h"
+#include "net.h"
+#include "types.h"
 #include "rinetd.h"
+#include "parse.h"
 
 Rule *allRules = NULL;
 int allRulesCount = 0;
@@ -121,8 +85,7 @@ char const *logMessages[] = {
 	"denied",
 };
 
-enum
-{
+enum {
 	logUnknownError = 0,
 	logLocalClosedFirst,
 	logRemoteClosedFirst,
@@ -131,6 +94,7 @@ enum
 	logLocalBindFailed,
 	logLocalConnectFailed,
 	logOpened,
+	logAllowed,
 	logNotAllowed,
 	logDenied,
 };
@@ -148,18 +112,15 @@ static void handleAccept(ServerInfo const *srv);
 static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
 static int getAddress(char const *host, struct in_addr *iaddr);
-static void refuse(ConnectionInfo *cnx, int logCode);
+static int checkConnectionAllowed(ConnectionInfo const *cnx);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
-static int getConfLine(FILE *in, char *line, int space, int *lnum);
 static void clearConfiguration(void);
 static void readConfiguration(char const *file);
 
 static void registerPID(char const *pid_file_name);
 static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int result);
 static struct tm *get_gmtoff(int *tz);
-
-#include "parse.h"
 
 /* Signal handlers */
 #if !HAVE_SIGACTION && !_WIN32
@@ -220,7 +181,7 @@ int main(int argc, char *argv[])
 		registerPID(pidLogFileName ? pidLogFileName : RINETD_PID_FILE);
 	}
 
-	syslog(LOG_INFO, "Starting redirections...");
+	syslog(LOG_INFO, "Starting redirections...\n");
 	while (1) {
 		selectPass();
 	}
@@ -265,19 +226,7 @@ static void clearConfiguration(void) {
 static void readConfiguration(char const *file) {
 
 	/* Parse the configuration file. */
-	FILE *in = fopen(file, "r");
-	if (!in) {
-		goto lowMemory;
-	}
-	yycontext ctx;
-	memset(&ctx, 0, sizeof(yycontext));
-	ctx.fp = in;
-	if (!yyparse(&ctx)) {
-		syslog(LOG_ERR, "invalid syntax "
-			"on file %s, line %d.\n", file, -1);
-		exit(1);
-	}
-	fclose(in);
+	parseConfiguration(file);
 
 	/* Open the log file */
 	if (logFile) {
@@ -293,33 +242,94 @@ static void readConfiguration(char const *file) {
 				logFileName);
 		}
 	}
-	return;
-lowMemory:
-	syslog(LOG_ERR, "not enough memory to start rinetd.\n");
-	exit(1);
 }
 
-static int getConfLine(FILE *in, char *line, int space, int *lnum)
-{
-	while (1) {
-		(*lnum)++;
-		if (!fgets(line, space, in)) {
-			return 0;
-		}
-		char const *p = line;
-		while (isspace(*p)) {
-			p++;
-		}
-		if (!(*p)) {
-			/* Blank lines are OK */
-			continue;
-		}
-		if (*p == '#') {
-			/* Comment lines are also OK */
-			continue;
-		}
-		return 1;
+void addServer(char *bindAddress, int bindPort, int bindProto,
+               char *connectAddress, int connectPort, int connectProto,
+               int serverTimeout) {
+	/* Turn all of this stuff into reasonable addresses */
+	struct in_addr iaddr;
+	if (getAddress(bindAddress, &iaddr) < 0) {
+		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
+			bindAddress);
+		exit(1);
 	}
+	/* Make a server socket */
+	SOCKET fd = socket(PF_INET,
+	                   bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
+	                   bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
+	if (fd == INVALID_SOCKET) {
+		syslog(LOG_ERR, "couldn't create "
+			"server socket! (%m)\n");
+		exit(1);
+	}
+	struct sockaddr_in saddr;
+	saddr.sin_family = AF_INET;
+	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
+	saddr.sin_port = htons(bindPort);
+	int tmp = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
+		(const char *) &tmp, sizeof(tmp));
+	if (bind(fd, (struct sockaddr *)
+		&saddr, sizeof(saddr)) == SOCKET_ERROR)
+	{
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "couldn't bind to "
+			"address %s port %d (%m)\n",
+			bindAddress, bindPort);
+		closesocket(fd);
+		exit(1);
+	}
+
+	if (bindProto == protoTcp) {
+		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+			/* Warn -- don't exit. */
+			syslog(LOG_ERR, "couldn't listen to "
+				"address %s port %d (%m)\n",
+				bindAddress, bindPort);
+			closesocket(fd);
+		}
+
+		setSocketDefaults(fd);
+	}
+
+	if (getAddress(connectAddress, &iaddr) < 0) {
+		/* Warn -- don't exit. */
+		syslog(LOG_ERR, "host %s could not be resolved.\n",
+			bindAddress);
+		closesocket(fd);
+		exit(1);
+	}
+	/* Allocate server info */
+	seInfo = (ServerInfo *)
+		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+	if (!seInfo) {
+		exit(1);
+	}
+	ServerInfo *srv = &seInfo[seTotal];
+	memset(srv, 0, sizeof(*srv));
+	srv->fd = fd;
+	srv->localAddr = iaddr;
+	srv->localPort = htons(connectPort);
+	srv->fromHost = bindAddress;
+	if (!srv->fromHost) {
+		exit(1);
+	}
+	srv->fromPort = bindPort;
+	srv->fromProto = bindProto;
+	srv->toHost = connectAddress;
+	if (!srv->toHost) {
+		exit(1);
+	}
+	srv->toPort = connectPort;
+	srv->toProto = connectProto;
+	srv->serverTimeout = serverTimeout;
+#ifndef _WIN32
+	if (fd > maxfd) {
+		maxfd = fd;
+	}
+#endif
+	++seTotal;
 }
 
 static void setConnectionCount(int newCount)
@@ -333,7 +343,8 @@ static void setConnectionCount(int newCount)
 			closesocket(coInfo[i].local.fd);
 		}
 		if (coInfo[i].remote.fd != INVALID_SOCKET) {
-			closesocket(coInfo[i].remote.fd);
+			if (coInfo[i].remote.proto == protoTcp)
+				closesocket(coInfo[i].remote.fd);
 		}
 		free(coInfo[i].local.buffer);
 	}
@@ -396,8 +407,8 @@ static ConnectionInfo *findAvailableConnection(void)
 	return &coInfo[oldTotal];
 }
 
-static void selectPass(void) {
-
+static void selectPass(void)
+{
 	int const fdSetCount = maxfd / FD_SETSIZE + 1;
 #	define FD_ZERO_EXT(ar) for (int i = 0; i < fdSetCount; ++i) { FD_ZERO(&(ar)[i]); }
 #ifdef _WIN32
@@ -408,6 +419,11 @@ static void selectPass(void) {
 #	define FD_SET_EXT(fd, ar) FD_SET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
 #	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
 #endif
+
+	/* Timeout value -- infinite by default */
+	struct timeval timeout;
+	timeout.tv_sec = timeout.tv_usec = 0;
+	time_t now = time(NULL);
 
 	fd_set readfds[fdSetCount], writefds[fdSetCount];
 	FD_ZERO_EXT(readfds);
@@ -437,6 +453,13 @@ static void selectPass(void) {
 			/* Get more input if we have room for it */
 			if (cnx->remote.recvPos < RINETD_BUFFER_SIZE) {
 				FD_SET_EXT(cnx->remote.fd, readfds);
+				/* For UDP connections, we need to handle timeouts */
+				if (cnx->remote.proto == protoUdp) {
+					long delay = (long)(cnx->remoteTimeout - now);
+					timeout.tv_sec = delay <= 1 ? 1
+						: (delay < timeout.tv_sec || timeout.tv_sec == 0) ? delay
+						: timeout.tv_sec;
+				}
 			}
 			/* Send more output if we have any, or if we’re closing */
 			if (cnx->remote.sentPos < cnx->local.recvPos || cnx->coClosing) {
@@ -444,12 +467,21 @@ static void selectPass(void) {
 			}
 		}
 	}
-	select(maxfd + 1, readfds, writefds, 0, 0);
+
+	select(maxfd + 1, readfds, writefds, 0, timeout.tv_sec ? &timeout : NULL);
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
 		if (cnx->remote.fd != INVALID_SOCKET) {
-			if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
-				handleRead(cnx, &cnx->remote, &cnx->local);
+			/* Do not read on remote UDP sockets, the server does it,
+				but handle timeouts instead. */
+			if (cnx->remote.proto == protoTcp) {
+				if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
+					handleRead(cnx, &cnx->remote, &cnx->local);
+				}
+			} else {
+				if (now > cnx->remoteTimeout) {
+					handleClose(cnx, &cnx->remote, &cnx->local);
+				}
 			}
 		}
 		if (cnx->remote.fd != INVALID_SOCKET) {
@@ -508,12 +540,22 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	if (cnx->coClosing && (socket->sentPos == other_socket->recvPos)) {
 		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, cnx->coLog);
-		closesocket(socket->fd);
+		if (socket->proto == protoTcp)
+			closesocket(socket->fd);
 		socket->fd = INVALID_SOCKET;
 		return;
 	}
-	int got = send(socket->fd, other_socket->buffer + socket->sentPos,
-		other_socket->recvPos - socket->sentPos, 0);
+
+	struct sockaddr const *addr = NULL;
+	SOCKLEN_T addrlen = 0;
+	if (socket->proto == protoUdp && socket == &cnx->remote) {
+		addr = (struct sockaddr const*)&cnx->remoteAddress;
+		addrlen = (SOCKLEN_T)sizeof(cnx->remoteAddress);
+	}
+
+	int got = sendto(socket->fd, other_socket->buffer + socket->sentPos,
+		other_socket->recvPos - socket->sentPos, 0,
+		addr, addrlen);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -534,12 +576,15 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket)
 {
 	cnx->coClosing = 1;
-	/* One end fizzled out, so make sure we're all done with that */
-	closesocket(socket->fd);
+	if (socket->proto == protoTcp) {
+		/* One end fizzled out, so make sure we're all done with that */
+		closesocket(socket->fd);
+	} else /* if (socket->proto == protoUdp) */ {
+		/* Nothing to do in UDP mode */
+	}
 	socket->fd = INVALID_SOCKET;
 	if (other_socket->fd != INVALID_SOCKET) {
-#ifndef __linux__
-#ifndef _WIN32
+#if !defined __linux__ && !defined _WIN32
 		/* Now set up the other end for a polite closing */
 
 		/* Request a low-water mark equal to the entire
@@ -548,8 +593,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		int arg = 1024;
 		setsockopt(other_socket->fd, SOL_SOCKET, SO_SNDLOWAT,
 			&arg, sizeof(arg));
-#endif /* _WIN32 */
-#endif /* __linux__ */
+#endif
 		cnx->coLog = socket == &cnx->local ?
 			logLocalClosedFirst : logRemoteClosedFirst;
 	}
@@ -557,112 +601,96 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 
 static void handleAccept(ServerInfo const *srv)
 {
+	struct sockaddr addr;
+	SOCKLEN_T addrlen = sizeof(addr);
+
+	SOCKET nfd;
+	if (srv->fromProto == protoTcp) {
+		/* In TCP mode, get remote address using accept(). */
+		nfd = accept(srv->fd, &addr, &addrlen);
+		if (nfd == INVALID_SOCKET) {
+			syslog(LOG_ERR, "accept(%d): %m\n", srv->fd);
+			logEvent(NULL, srv, logAcceptFailed);
+			return;
+		}
+
+		setSocketDefaults(nfd);
+	} else /* if (srv->fromProto == protoUdp) */ {
+		/* In UDP mode, get remote address using recvfrom() and check
+			for an existing connection from this client. */
+		nfd = srv->fd;
+		ssize_t ret = recvfrom(srv->fd, NULL, 0, MSG_PEEK,
+					&addr, &addrlen);
+		if (ret < 0) {
+			if (GetLastError() == WSAEWOULDBLOCK) {
+				return;
+			}
+			if (GetLastError() == WSAEINPROGRESS) {
+				return;
+			}
+			syslog(LOG_ERR, "recvfrom(%d): %m\n", srv->fd);
+			logEvent(NULL, srv, logAcceptFailed);
+			return;
+		}
+
+		for (int i = 0; i < coTotal; ++i) {
+			ConnectionInfo *cnx = &coInfo[i];
+			struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
+			if (cnx->remote.fd == nfd
+				&& cnx->remoteAddress.sin_family == addr_in->sin_family
+				&& cnx->remoteAddress.sin_port == addr_in->sin_port
+				&& cnx->remoteAddress.sin_addr.s_addr == addr_in->sin_addr.s_addr) {
+				cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
+				handleRead(cnx, &cnx->remote, &cnx->local);
+				return;
+			}
+		}
+	}
+
 	ConnectionInfo *cnx = findAvailableConnection();
 	if (!cnx) {
 		return;
 	}
 
-	struct sockaddr addr;
-	struct in_addr address;
-#if HAVE_SOCKLEN_T
-	socklen_t addrlen;
-#else
-	int addrlen;
-#endif
-	addrlen = sizeof(addr);
-	SOCKET nfd = accept(srv->fd, &addr, &addrlen);
-	if (nfd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "accept(%d): %m", srv->fd);
-		logEvent(NULL, srv, logAcceptFailed);
-		return;
-	}
-
-#if _WIN32
-	u_long ioctltmp;
-#else
-	int ioctltmp;
-#endif
-	ioctlsocket(nfd, FIONBIO, &ioctltmp);
-
-#ifndef _WIN32
-	int tmp = 0;
-	setsockopt(nfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#endif
-
 	cnx->local.fd = INVALID_SOCKET;
+	cnx->local.proto = srv->toProto;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.recvBytes = cnx->local.sentBytes = 0;
+
 	cnx->remote.fd = nfd;
+	cnx->remote.proto = srv->fromProto;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
+	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
+	if (srv->fromProto == protoUdp)
+		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
+
 	cnx->coClosing = 0;
 	cnx->coLog = logUnknownError;
 	cnx->server = srv;
 
-	struct sockaddr_in *sin = (struct sockaddr_in *) &addr;
-	cnx->reAddresses.s_addr = address.s_addr = sin->sin_addr.s_addr;
-	char const *addressText = inet_ntoa(address);
+	int logCode = checkConnectionAllowed(cnx);
+	if (logCode != logAllowed) {
+		/* Local fd is not open yet, so only
+			close the remote socket. */
+		if (cnx->remote.proto == protoTcp)
+			closesocket(cnx->remote.fd);
+		cnx->remote.fd = INVALID_SOCKET;
+		logEvent(cnx, cnx->server, logCode);
+		return;
+	}
 
-	/* 1. Check global allow rules. If there are no
-		global allow rules, it's presumed OK at
-		this step. If there are any, and it doesn't
-		match at least one, kick it out. */
-	int good = 1;
-	for (int j = 0; j < globalRulesCount; ++j) {
-		if (allRules[j].type == allowRule) {
-			good = 0;
-			if (match(addressText, allRules[j].pattern)) {
-				good = 1;
-				break;
-			}
-		}
-	}
-	if (!good) {
-		refuse(cnx, logNotAllowed);
-		return;
-	}
-	/* 2. Check global deny rules. If it matches
-		any of the global deny rules, kick it out. */
-	for (int j = 0; j < globalRulesCount; ++j) {
-		if (allRules[j].type == denyRule
-			&& match(addressText, allRules[j].pattern)) {
-			refuse(cnx, logDenied);
-		}
-	}
-	/* 3. Check allow rules specific to this forwarding rule.
-		If there are none, it's OK. If there are any,
-		it must match at least one. */
-	good = 1;
-	for (int j = 0; j < srv->rulesCount; ++j) {
-		if (allRules[srv->rulesStart + j].type == allowRule) {
-			good = 0;
-			if (match(addressText,
-				allRules[srv->rulesStart + j].pattern)) {
-				good = 1;
-				break;
-			}
-		}
-	}
-	if (!good) {
-		refuse(cnx, logNotAllowed);
-		return;
-	}
-	/* 4. Check deny rules specific to this forwarding rule. If
-		it matches any of the deny rules, kick it out. */
-	for (int j = 0; j < srv->rulesCount; ++j) {
-		if (allRules[srv->rulesStart + j].type == denyRule
-			&& match(addressText, allRules[srv->rulesStart + j].pattern)) {
-			refuse(cnx, logDenied);
-		}
-	}
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	struct sockaddr_in saddr;
-	cnx->local.fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	cnx->local.fd = srv->toProto == protoTcp
+		? socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)
+		: socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (cnx->local.fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "socket(): %m");
-		closesocket(cnx->remote.fd);
+		syslog(LOG_ERR, "socket(): %m\n");
+		if (cnx->remote.proto == protoTcp)
+			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, srv, logLocalSocketFailed);
 		return;
@@ -675,7 +703,8 @@ static void handleAccept(ServerInfo const *srv)
 	saddr.sin_addr.s_addr = 0;
 	if (bind(cnx->local.fd, (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
 		closesocket(cnx->local.fd);
-		closesocket(cnx->remote.fd);
+		if (cnx->remote.proto == protoTcp)
+			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		cnx->local.fd = INVALID_SOCKET;
 		logEvent(cnx, srv, logLocalBindFailed);
@@ -688,18 +717,8 @@ static void handleAccept(ServerInfo const *srv)
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
 
-#ifndef _WIN32
-#ifdef __linux__
-	tmp = 0;
-	setsockopt(cnx->local.fd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
-#else
-	tmp = 1024;
-	setsockopt(cnx->local.fd, SOL_SOCKET, SO_SNDBUF, &tmp, sizeof(tmp));
-#endif /* __linux__ */
-#endif /* _WIN32 */
-
-	ioctltmp = 1;
-	ioctlsocket(cnx->local.fd, FIONBIO, &ioctltmp);
+	if (srv->toProto == protoTcp)
+		setSocketDefaults(cnx->local.fd);
 
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
@@ -709,7 +728,8 @@ static void handleAccept(ServerInfo const *srv)
 		{
 			PERROR("rinetd: connect");
 			closesocket(cnx->local.fd);
-			closesocket(cnx->remote.fd);
+			if (cnx->remote.proto == protoTcp)
+				closesocket(cnx->remote.fd);
 			cnx->remote.fd = INVALID_SOCKET;
 			cnx->local.fd = INVALID_SOCKET;
 			logEvent(cnx, srv, logLocalConnectFailed);
@@ -729,13 +749,63 @@ static void handleAccept(ServerInfo const *srv)
 	logEvent(cnx, srv, logOpened);
 }
 
-static void refuse(ConnectionInfo *cnx, int logCode)
+static int checkConnectionAllowed(ConnectionInfo const *cnx)
 {
-	/* Local fd is not open yet when we refuse(), so only
-		close the remote socket. */
-	closesocket(cnx->remote.fd);
-	cnx->remote.fd = INVALID_SOCKET;
-	logEvent(cnx, cnx->server, logCode);
+	ServerInfo const *srv = cnx->server;
+	char const *addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
+
+	/* 1. Check global allow rules. If there are no
+		global allow rules, it's presumed OK at
+		this step. If there are any, and it doesn't
+		match at least one, kick it out. */
+	int good = 1;
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == allowRule) {
+			good = 0;
+			if (match(addressText, allRules[j].pattern)) {
+				good = 1;
+				break;
+			}
+		}
+	}
+	if (!good) {
+		return logNotAllowed;
+	}
+	/* 2. Check global deny rules. If it matches
+		any of the global deny rules, kick it out. */
+	for (int j = 0; j < globalRulesCount; ++j) {
+		if (allRules[j].type == denyRule
+			&& match(addressText, allRules[j].pattern)) {
+			return logDenied;
+		}
+	}
+	/* 3. Check allow rules specific to this forwarding rule.
+		If there are none, it's OK. If there are any,
+		it must match at least one. */
+	good = 1;
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == allowRule) {
+			good = 0;
+			if (match(addressText,
+				allRules[srv->rulesStart + j].pattern)) {
+				good = 1;
+				break;
+			}
+		}
+	}
+	if (!good) {
+		return logNotAllowed;
+	}
+	/* 4. Check deny rules specific to this forwarding rule. If
+		it matches any of the deny rules, kick it out. */
+	for (int j = 0; j < srv->rulesCount; ++j) {
+		if (allRules[srv->rulesStart + j].type == denyRule
+			&& match(addressText, allRules[srv->rulesStart + j].pattern)) {
+			return logDenied;
+		}
+	}
+
+	return logAllowed;
 }
 
 static int getAddress(char const *host, struct in_addr *iaddr)
@@ -784,7 +854,7 @@ static int getAddress(char const *host, struct in_addr *iaddr)
 		msg = "A temporary error occurred on an authoritative name server.  Try again later.";
 		break;
 	}
-	syslog(LOG_ERR, "While resolving `%s' got: %s", host, msg);
+	syslog(LOG_ERR, "While resolving `%s' got: %s\n", host, msg);
 	return -1;
 }
 
@@ -800,7 +870,7 @@ RETSIGTYPE plumber(int s)
 RETSIGTYPE hup(int s)
 {
 	(void)s;
-	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...");
+	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...\n");
 	/* Learn the new rules */
 	clearConfiguration();
 	readConfiguration(options.conf_file);
@@ -866,8 +936,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	int bytesOutput = 0;
 	int bytesInput = 0;
 	if (cnx != NULL) {
-		struct in_addr const *reAddress = &cnx->reAddresses;
-		addressText = inet_ntoa(*reAddress);
+		addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
 		bytesOutput = cnx->remote.sentBytes;
 		bytesInput = cnx->remote.recvBytes;
 	}
@@ -884,7 +953,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	}
 
 	if (result==logNotAllowed || result==logDenied)
-		syslog(LOG_INFO, "%s %s"
+		syslog(LOG_INFO, "%s %s\n"
 			, addressText
 			, logMessages[result]);
 	if (logFile) {
