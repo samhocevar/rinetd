@@ -139,11 +139,12 @@ invalid_syntax  =  < (!eol .)+ > eol
 }
 
 service  =  name
-address  =  ipv4 | hostname  # TODO: IPV6
+address  =  ipv4 | ipv6 | hostname  # TODO: IPV6
 pattern  =  [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+)?)?)?
 number   =  digit+
 
 ipv4     =  number '.' number '.' number '.' number | '0'
+ipv6     =  (hexdigit | ':')+ | '[' ipv6 ']'
 hostname =  ([-0-9a-zA-Z_]+ '.')* [a-zA-Z][-0-9a-zA-Z_]* '.'?
 
 
@@ -153,6 +154,7 @@ filename =  '"' [^"]+ '"'
 
 -        =  [ \t]+
 digit    =  [0-9]
+hexdigit =  [0-9a-fA-F]
 sol      =  { ++yy->currentLine; }
 eol      =  '\r'? '\n' | eof
 eof      =  '\0'

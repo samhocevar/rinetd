@@ -858,14 +858,17 @@ static int checkConnectionAllowed(ConnectionInfo const *cnx)
 static int getAddress(char const *host, struct in_addr *iaddr)
 {
 	/* If this is an IP address, use inet_addr() */
-	int is_ipaddr = 1;
+	int is_ipv4 = 1, is_ipv6 = 0;
 	for (char const *p = host; *p; ++p) {
-		if (!isdigit(*p) && *p != '.') {
-			is_ipaddr = 0;
-			break;
-		}
+		is_ipv6 |= (*p == ':' || *p == '[' || *p == ']');
+		is_ipv4 &= (isdigit(*p) || *p == '.');
 	}
-	if (is_ipaddr) {
+	if (is_ipv6) {
+		fprintf(stderr, "IPv6 addresses are not supported yet: %s\n", host);
+		return -1;
+	}
+
+	if (is_ipv4) {
 		iaddr->s_addr = inet_addr(host);
 		return 0;
 	}
