@@ -543,8 +543,17 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		socket->fd = INVALID_SOCKET;
 		return;
 	}
-	int got = send(socket->fd, other_socket->buffer + socket->sentPos,
-		other_socket->recvPos - socket->sentPos, 0);
+
+	struct sockaddr const *addr = NULL;
+	SOCKLEN_T addrlen = 0;
+	if (socket->proto == protoUdp && socket == &cnx->remote) {
+		addr = (struct sockaddr const*)&cnx->remoteAddress;
+		addrlen = (SOCKLEN_T)sizeof(cnx->remoteAddress);
+	}
+
+	int got = sendto(socket->fd, other_socket->buffer + socket->sentPos,
+		other_socket->recvPos - socket->sentPos, 0,
+		addr, addrlen);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
