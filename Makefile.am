@@ -2,13 +2,17 @@
 AUTOMAKE_OPTIONS = foreign dist-bzip2
 
 EXTRA_DIST = bootstrap CHANGES.md README.md index.html \
-	getopt.c getopt.h $(man_MANS) $(sysconf_DATA)
+	parse.peg getopt.c getopt.h $(man_MANS) $(sysconf_DATA)
 
 man_MANS = rinetd.8
 sysconf_DATA = rinetd.conf
 
 sbin_PROGRAMS = rinetd
-rinetd_SOURCES = rinetd.c rinetd.h parse.c parse.h match.c match.h net.c net.h
+rinetd_SOURCES = rinetd.c rinetd.h \
+                 parse.c parse.h \
+                 match.c match.h \
+                 net.c net.h \
+                 types.h
 
 BUILT_SOURCES = parse.c
 
