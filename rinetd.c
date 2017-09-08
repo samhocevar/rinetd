@@ -250,13 +250,20 @@ static void readConfiguration(char const *file) {
 
 void addServer(char *bindAddress, int bindPort, int bindProto,
                char *connectAddress, int connectPort, int connectProto,
-               int serverTimeout)
+               int serverTimeout, char *sourceAddress)
 {
 	/* Turn all of this stuff into reasonable addresses */
 	struct in_addr iaddr;
 	if (getAddress(bindAddress, &iaddr) < 0) {
 		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
 			bindAddress);
+		exit(1);
+	}
+	struct in_addr isourceaddr;
+	isourceaddr.s_addr = INADDR_ANY;
+	if (sourceAddress && getAddress(sourceAddress, &isourceaddr) < 0) {
+		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
+			sourceAddress);
 		exit(1);
 	}
 	/* Make a server socket */
@@ -323,6 +330,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 	}
 	srv->fromPort = bindPort;
 	srv->fromProto = bindProto;
+	srv->sourceAddr = isourceaddr;
 	srv->toHost = connectAddress;
 	if (!srv->toHost) {
 		exit(1);
@@ -731,27 +739,21 @@ static void handleAccept(ServerInfo const *srv)
 	if (srv->toProto == protoTcp)
 		setSocketDefaults(cnx->local.fd);
 
-#if 0 // You don't need bind(2) on a socket you'll use for connect(2).
-	/* Bind the local socket */
+	/* Bind the local socket even if we use connect() later, so that
+		we can specify a source address. */
+	memset(&saddr, 0, sizeof(struct sockaddr_in));
 	saddr.sin_family = AF_INET;
-	saddr.sin_port = INADDR_ANY;
-	saddr.sin_addr.s_addr = 0;
-	if (bind(cnx->local.fd, (struct sockaddr *) &saddr, sizeof(saddr)) == SOCKET_ERROR) {
-		closesocket(cnx->local.fd);
-		if (cnx->remote.proto == protoTcp)
-			closesocket(cnx->remote.fd);
-		cnx->remote.fd = INVALID_SOCKET;
-		cnx->local.fd = INVALID_SOCKET;
-		logEvent(cnx, srv, logLocalBindFailed);
-		return;
+	memcpy(&saddr.sin_addr, &srv->sourceAddr, sizeof(struct in_addr));
+	saddr.sin_port = 0;
+	if (bind(cnx->local.fd, (struct sockaddr *)&saddr,
+		sizeof(saddr)) == SOCKET_ERROR) {
+		syslog(LOG_ERR, "bind(): %m\n");
 	}
-#endif
 
 	memset(&saddr, 0, sizeof(struct sockaddr_in));
 	saddr.sin_family = AF_INET;
 	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
 	saddr.sin_port = srv->localPort;
-
 	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
 		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
 	{

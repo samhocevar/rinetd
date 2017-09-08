@@ -25,7 +25,7 @@
 	int tmpPortNum, tmpProto; \
 	int bindPortNum, bindProto, connectPortNum, connectProto; \
 	int serverTimeout; \
-	char *bindAddress, *connectAddress;
+	char *bindAddress, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
 	int yyc = fgetc(yyctx->fp); \
@@ -48,12 +48,13 @@ line     =  -? (command -?)? comment?
 command  =  (server-rule | auth-rule | logfile | pidlogfile | logcommon)
 comment  =  "#" (!eol .)*
 
-server-rule  =  bind-address - bind-port - connect-address - connect-port (-? "[" -? server-options -? "]")?
+server-rule  =  bind-address - bind-port - connect-address - connect-port (-? server-options)?
 {
 	addServer(yy->bindAddress, yy->bindPortNum, yy->bindProto,
-	          yy->connectAddress, yy->connectPortNum, yy->connectProto,
-	          yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT);
-	yy->bindAddress = yy->connectAddress = NULL;
+		yy->connectAddress, yy->connectPortNum, yy->connectProto,
+		yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT,
+		yy->sourceAddress);
+	yy->bindAddress = yy->connectAddress = yy->sourceAddress = NULL;
 	yy->serverTimeout = 0;
 }
 
@@ -61,7 +62,12 @@ bind-address     =  < address > { yy->bindAddress = strdup(yytext); }
 connect-address  =  < address > { yy->connectAddress = strdup(yytext); }
 bind-port        =  full-port { yy->bindPortNum = yy->tmpPortNum; yy->bindProto = yy->tmpProto; }
 connect-port     =  full-port { yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; }
-server-options   =  ("timeout" -? "=" -? < number >) { yy->serverTimeout = atoi(yytext); }
+server-options   =  "[" -? option-list -? "]"
+
+option-list     =  option (-? ',' -? option-list)?
+option          =  (option-timeout | option-source)
+option-timeout  =  "timeout" -? "=" -? < number >    { yy->serverTimeout = atoi(yytext); }
+option-source   =  "src"     -? "=" -? < address >   { yy->sourceAddress = strdup(yytext); }
 
 full-port  =  port proto
 {
@@ -171,7 +177,7 @@ void parseConfiguration(char const *file)
 
 	fclose(in);
 
-	/* Avopid warnings for these unused functions */
+	/* Avoid warnings for these unused functions */
 	(void)yySet; (void)yyPush; (void)yyPop; (void)yyAccept;
 }
 
