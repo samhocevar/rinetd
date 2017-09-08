@@ -23,6 +23,7 @@
 
 static int const RINETD_BUFFER_SIZE = 16384;
 static int const RINETD_LISTEN_BACKLOG = 128;
+static int const RINETD_DEFAULT_UDP_TIMEOUT = 72;
 
 #define RINETD_CONFIG_FILE "/etc/rinetd.conf"
 #define RINETD_PID_FILE "/var/run/rinetd.pid"
@@ -44,5 +45,6 @@ extern FILE *logFile;
 /* Functions */
 
 void addServer(char *bindAddress, int bindPort, int bindProto,
-               char *connectAddress, int connectPort, int connectProto);
+               char *connectAddress, int connectPort, int connectProto,
+               int serverTimeout);
 

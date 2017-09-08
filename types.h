@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <time.h>
+
 enum ruleType {
 	allowRule,
 	denyRule,
@@ -40,6 +42,9 @@ struct _server_info {
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
 	int rulesStart, rulesCount;
+	/* Timeout for UDP traffic before we consider the connection
+		was dropped by the remote host. */
+	int serverTimeout;
 };
 
 typedef struct _socket Socket;
@@ -59,6 +64,7 @@ struct _connection_info
 {
 	Socket remote, local;
 	struct sockaddr_in remoteAddress;
+	time_t remoteTimeout;
 	int coClosing;
 	int coLog;
 	ServerInfo const *server; // only useful for logEvent

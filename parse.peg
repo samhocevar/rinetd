@@ -24,6 +24,7 @@
 	char *tmpPort; \
 	int tmpPortNum, tmpProto; \
 	int bindPortNum, bindProto, connectPortNum, connectProto; \
+	int serverTimeout; \
 	char *bindAddress, *connectAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
@@ -44,21 +45,26 @@
 
 file     =  (sol (line eol | invalid-syntax))*
 line     =  -? (command -?)? comment?
-command  =  (server | rule | logfile | pidlogfile | logcommon)
+command  =  (server-rule | auth-rule | logfile | pidlogfile | logcommon)
 comment  =  "#" (!eol .)*
 
-server  =  bind-address - bind-port - connect-address - connect-port {
+server-rule  =  bind-address - bind-port - connect-address - connect-port (-? "[" -? server-options -? "]")?
+{
 	addServer(yy->bindAddress, yy->bindPortNum, yy->bindProto,
-	          yy->connectAddress, yy->connectPortNum, yy->connectProto);
+	          yy->connectAddress, yy->connectPortNum, yy->connectProto,
+	          yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT);
 	yy->bindAddress = yy->connectAddress = NULL;
+	yy->serverTimeout = 0;
 }
 
 bind-address     =  < ipv4 > { yy->bindAddress = strdup(yytext); }
 connect-address  =  < ipv4 > { yy->connectAddress = strdup(yytext); }
 bind-port        =  full-port { yy->bindPortNum = yy->tmpPortNum; yy->bindProto = yy->tmpProto; }
 connect-port     =  full-port { yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; }
+server-options   =  ("timeout" -? "=" -? < number >) { yy->serverTimeout = atoi(yytext); }
 
-full-port  =  port proto {
+full-port  =  port proto
+{
 	char const *proto = yy->tmpProto == protoTcp ? "tcp" : "udp";
 	struct servent *service = getservbyname(yy->tmpPort, proto);
 	yy->tmpPortNum = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
@@ -73,7 +79,8 @@ proto  = '/tcp'                   { yy->tmpProto = protoTcp; }
        | '/udp'                   { yy->tmpProto = protoUdp; }
        | ''                       { yy->tmpProto = protoTcp; }
 
-rule  =  auth-key - < pattern > {
+auth-rule  =  auth-key - < pattern >
+{
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
 	if (!allRules) {
@@ -97,25 +104,29 @@ rule  =  auth-key - < pattern > {
 
 auth-key = < ("allow" | "deny") >         { yy->isAuthAllow = (yytext[0] == 'a'); }
 
-logfile  =  "logfile" - < filename > {
+logfile  =  "logfile" - < filename >
+{
 	logFileName = strdup(yytext);
 	if (!logFileName) {
 		PARSE_ERROR;
 	}
 }
 
-pidlogfile  =  "pidlogfile" - < filename > {
+pidlogfile  =  "pidlogfile" - < filename >
+{
 	pidLogFileName = strdup(yytext);
 	if (!pidLogFileName) {
 		PARSE_ERROR;
 	}
 }
 
-logcommon  =  "logcommon" {
+logcommon  =  "logcommon"
+{
 	logFormatCommon = 1;
 }
 
-invalid_syntax  =  < (!eol .)+ > eol {
+invalid_syntax  =  < (!eol .)+ > eol
+{
 	fprintf(stderr, "rinetd: invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
 	PARSE_ERROR; /* FIXME */
@@ -138,7 +149,8 @@ eof      =  '\0'
 
 %%
 
-void parseConfiguration(char const *file) {
+void parseConfiguration(char const *file)
+{
 	FILE *in = fopen(file, "r");
 	if (!in) {
 		PARSE_ERROR;

@@ -243,7 +243,8 @@ static void readConfiguration(char const *file) {
 }
 
 void addServer(char *bindAddress, int bindPort, int bindProto,
-               char *connectAddress, int connectPort, int connectProto) {
+               char *connectAddress, int connectPort, int connectProto,
+               int serverTimeout) {
 	/* Turn all of this stuff into reasonable addresses */
 	struct in_addr iaddr;
 	if (getAddress(bindAddress, &iaddr) < 0) {
@@ -320,6 +321,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 	}
 	srv->toPort = connectPort;
 	srv->toProto = connectProto;
+	srv->serverTimeout = serverTimeout;
 #ifndef _WIN32
 	if (fd > maxfd) {
 		maxfd = fd;
@@ -416,6 +418,11 @@ static void selectPass(void)
 #	define FD_ISSET_EXT(fd, ar) FD_ISSET((fd) % FD_SETSIZE, &(ar)[(fd) / FD_SETSIZE])
 #endif
 
+	/* Timeout value -- infinite by default */
+	struct timeval timeout;
+	timeout.tv_sec = timeout.tv_usec = 0;
+	time_t now = time(NULL);
+
 	fd_set readfds[fdSetCount], writefds[fdSetCount];
 	FD_ZERO_EXT(readfds);
 	FD_ZERO_EXT(writefds);
@@ -444,6 +451,13 @@ static void selectPass(void)
 			/* Get more input if we have room for it */
 			if (cnx->remote.recvPos < RINETD_BUFFER_SIZE) {
 				FD_SET_EXT(cnx->remote.fd, readfds);
+				/* For UDP connections, we need to handle timeouts */
+				if (cnx->remote.proto == protoUdp) {
+					long delay = (long)(cnx->remoteTimeout - now);
+					timeout.tv_sec = delay <= 1 ? 1
+						: (delay < timeout.tv_sec || timeout.tv_sec == 0) ? delay
+						: timeout.tv_sec;
+				}
 			}
 			/* Send more output if we have any, or if we’re closing */
 			if (cnx->remote.sentPos < cnx->local.recvPos || cnx->coClosing) {
@@ -451,14 +465,20 @@ static void selectPass(void)
 			}
 		}
 	}
-	select(maxfd + 1, readfds, writefds, 0, 0);
+
+	select(maxfd + 1, readfds, writefds, 0, timeout.tv_sec ? &timeout : NULL);
 	for (int i = 0; i < coTotal; ++i) {
 		ConnectionInfo *cnx = &coInfo[i];
 		if (cnx->remote.fd != INVALID_SOCKET) {
-			/* Do not read on remote UDP sockets, the server does it. */
-			if (cnx->remote.proto != protoUdp) {
+			/* Do not read on remote UDP sockets, the server does it,
+				but handle timeouts instead. */
+			if (cnx->remote.proto == protoTcp) {
 				if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
 					handleRead(cnx, &cnx->remote, &cnx->local);
+				}
+			} else {
+				if (now > cnx->remoteTimeout) {
+					handleClose(cnx, &cnx->remote, &cnx->local);
 				}
 			}
 		}
@@ -609,6 +629,7 @@ static void handleAccept(ServerInfo const *srv)
 				&& cnx->remoteAddress.sin_family == addr_in->sin_family
 				&& cnx->remoteAddress.sin_port == addr_in->sin_port
 				&& cnx->remoteAddress.sin_addr.s_addr == addr_in->sin_addr.s_addr) {
+				cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 				handleRead(cnx, &cnx->remote, &cnx->local);
 				return;
 			}
@@ -624,11 +645,15 @@ static void handleAccept(ServerInfo const *srv)
 	cnx->local.proto = srv->toProto;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.recvBytes = cnx->local.sentBytes = 0;
+
 	cnx->remote.fd = nfd;
 	cnx->remote.proto = srv->fromProto;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
 	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
+	if (srv->fromProto == protoUdp)
+		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
+
 	cnx->coClosing = 0;
 	cnx->coLog = logUnknownError;
 	cnx->server = srv;
