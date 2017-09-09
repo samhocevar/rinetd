@@ -1,3 +1,10 @@
+## Version 0.70
+
+ * UDP support
+ * source address binding support
+ * use a real grammar for the configuration file and get rid of the hand-made
+   parser
+
 ## Version 0.63
 
  * added a `-f` flag to run in the foreground
