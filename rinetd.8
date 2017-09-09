@@ -1,199 +1,233 @@
-.\" Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
-.\" This software is released for free use under the terms of
-.\" the GNU Public License, version 2 or higher.
-.\"
-.Dd July 19, 2017
-.Dt RINETD 8
-.Os LINUX
-.Sh NAME
-.Nm rinetd
-.Nd internet
-.Dq redirection server
-.Sh SYNOPSIS
-.Nm /usr/sbin/rinetd
-.Sh VERSION
-Version 0.63, 2017/07/19.
-.Sh DESCRIPTION
-.Nm rinetd
-redirects TCP connections from one IP address and port to another. rinetd
-is a single-process server which handles any number of connections to
-the address/port pairs specified in the file /etc/rinetd.conf.
-Since rinetd runs as a single process using nonblocking I/O, it is
-able to redirect a large number of connections without a severe
-impact on the machine. This makes it practical to run TCP services
-on machines inside an IP masquerading firewall. rinetd does not
-redirect FTP, because FTP requires more than one socket.
-.Pp
-rinetd is typically launched at boot time, using the following syntax:
-.Pp
-/usr/sbin/rinetd
-.Pp
-The configuration file is found in the file /etc/rinetd.conf, unless
-another file is specified using the -c command line option.
-.Sh FORWARDING RULES
+.TH rinetd 8 "2017-07-19" "rinetd 0.63"
+
+.SH NAME
+rinetd \- internet redirection server
+
+.SH SYNOPSIS
+\fBrinetd\fR
+[\fB\-f\fR]
+[\fB\-c\fR \fIconfiguration\fR]
+.br
+\fBrinetd \-h\fR
+.br
+\fBrinetd \-v\fR
+
+.SH DESCRIPTION
+.PP
+\fBrinetd\fR
+redirects TCP or UDP connections from one IP address and port to another.
+\fBrinetd\fR is a single-process server which handles any number of connections to
+the address/port pairs specified in the file \fI/etc/rinetd.conf\fR. Since
+\fBrinetd\fR runs as a single process using nonblocking I/O, it is able to redirect a
+large number of connections without a severe impact on the machine. This makes
+it practical to run services on machines inside an IP masquerading firewall.
+.PP
+\fBrinetd\fR is typically launched at boot time, using the following syntax:
+.PP
+\fB    /usr/sbin/rinetd\fR
+.PP
+The configuration file is found in the file \fI/etc/rinetd.conf\fR, unless
+another file is specified using the \fB\-c\fR command line option.
+
+.SH OPTIONS
+.TP
+\fB\-f\fR
+Run \fBrinetd\fR in the foreground, without forking to the background.
+.TP
+\fB\-c\fR \fIconfiguration\fR
+Specify an alternate configuration file.
+.TP
+\fB\-v\fR
+Display the version number and exit.
+.TP
+\fB\-h\fR
+Produce a short help message and exit.
+
+.SH FORWARDING RULES
+.PP
 Most entries in the configuration file are forwarding rules. The
 format of a forwarding rule is as follows:
-.Pp
-bindaddress bindport connectaddress connectport
-.Pp
+.PP
+\fB    bindaddress bindport connectaddress connectport [options...]\fR
+.PP
 For example:
-.Pp
-206.125.69.81 80 10.1.1.2 80
-.Pp
+.PP
+\fB    206.125.69.81 80  10.1.1.2 80\fR
+.PP
 Would redirect all connections to port 80 of the "real" IP address
-206.125.69.81, which could be a virtual interface, through
-rinetd to port 80 of the address 10.1.1.2, which would typically
-be a machine on the inside of a firewall which has no
-direct routing to the outside world.
-.Pp
-Although responding on individual interfaces rather than on all
-interfaces is one of rinetd's primary features, sometimes it is
-preferable to respond on all IP addresses that belong to the server.
-In this situation, the special IP address 0.0.0.0
-can be used. For example:
-.Pp
-0.0.0.0 23 10.1.1.2 23
-.Pp
+206.125.69.81, which could be a virtual interface, through \fBrinetd\fR to port
+80 of the address 10.1.1.2, which would typically be a machine on the inside of
+a firewall which has no direct routing to the outside world.
+
+.PP Although responding on individual interfaces rather than on all interfaces
+is one of \fBrinetd\fR's primary features, sometimes it is preferable to
+respond on all IP addresses that belong to the server. In this situation, the
+special IP address 0.0.0.0 can be used. For example:
+
+.PP
+\fB    0.0.0.0 23  10.1.1.2 23\fR
+.PP
 Would redirect all connections to port 23, for all IP addresses
 assigned to the server. This is the default behavior for most
 other programs.
-.Pp
+.PP
+Ports default to TCP. To specify the protocol, append \fI/udp\fR
+or \fI/tcp\fR to the port number:
+.PP
+\fB    206.125.69.81 80/tcp  10.1.1.2 8000/udp\fR
+.PP
 Service names can be specified instead of port numbers. On most systems,
-service names are defined in the file /etc/services.
-.Pp
+service names are defined in the file \fI/etc/services\fR.
+.PP
 Both IP addresses and hostnames are accepted for
 bindaddress and connectaddress.
-.Pp
-.Sh ALLOW AND DENY RULES
+.PP
+
+.SS UDP timeout option
+Since UDP is a connectionless protocol, a timeout is necessary or forwarding
+connections may accumulate with time and exhaust resources. By default, if
+no data is sent or received on a UDP connection for 72 seconds, the other
+connection is closed. This value can be changed using the \fItimeout\fR option:
+.PP
+\fB    0.0.0.0 8000/udp  10.1.1.2 80  [timeout=3600]\fR
+.PP
+This rule will forward all data received on UDP port 8000 to host 10.1.1.2
+on TCP port 80, and will close the connection after no data is received on
+the UDP port for 3600 seconds.
+
+.SS Source address option
+A forwarding rule option allows to bind to a specific local address when
+sending data to the other end. This is done using the \fIsrc\fR option:
+.PP
+\fB    192.168.1.1 80  10.1.1.2 80  [src=192.168.1.2]\fR
+.PP
+Assuming the local host has two IP addresses, 192.168.1.1 and 192.168.1.2, this
+rule ensures that forwarded packets are sent using source address 192.168.1.2.
+
+.SH ALLOW AND DENY RULES
 Configuration files can also contain allow and deny rules.
-.Pp
+.PP
 Allow rules which appear before the first forwarding rule are
 applied globally: if at least one global allow rule exists,
 and the address of a new connection does not
 satisfy at least one of the global allow rules, that connection
 is immediately rejected, regardless of any other rules.
-.Pp
+.PP
 Allow rules which appear after a specific forwarding rule apply
 to that forwarding rule only. If at least one allow rule
 exists for a particular forwarding rule, and the address of a new
 connection does not satisfy at least one of the allow rules
 for that forwarding rule, that connection is immediately
 rejected, regardless of any other rules.
-.Pp
+.PP
 Deny rules which appear before the first forwarding rule are
 applied globally: if the address of a new connection satisfies
 any of the global deny rules, that connection
 is immediately rejected, regardless of any other rules.
-.Pp
+.PP
 Deny rules which appear after a specific forwarding rule apply
 to that forwarding rule only. If the address of a new
 connection satisfies any of the deny rules for that forwarding rule,
 that connection is immediately rejected, regardless of any other rules.
-.Pp
+.PP
 The format of an allow rule is as follows:
-.Pp
-allow pattern
-.Pp
-Patterns can contain the following characters: 0, 1, 2, 3, 4, 5,
-6, 7, 8, 9, . (period), ?, and *. The ? wildcard matches any one
-character. The * wildcard matches any number of characters, including
-zero.
-.Pp
+.PP
+\fB    allow|deny pattern\fR
+.PP
+Patterns can contain the following characters: \fB0\fR, \fB1\fR, \fB2\fR,
+\fB3\fR, \fB4\fR, \fB5\fR, \fB6\fR, \fB7\fR, \fB8\fR, \fB9\fR, \fB.\fR
+(period), \fB?\fR, and \fB*\fR. The \fB?\fR wildcard matches any one character.
+The \fB*\fR wildcard matches any number of characters, including zero.
+.PP
 For example:
-.Pp
-allow 206.125.69.*
-.Pp
+.PP
+\fB    allow 206.125.69.*\fR
+.PP
 This allow rule matches all IP addresses in the 206.125.69 class C domain.
-.Pp
+.PP
 Host names are NOT permitted in allow and deny rules. The performance
 cost of looking up IP addresses to find their corresponding names
-is prohibitive. Since rinetd is a single process server, all other
+is prohibitive. Since \fBrinetd\fR is a single process server, all other
 connections would be forced to pause during the address lookup.
-.Pp
-.Sh LOGGING
-rinetd is able to produce a log file in either of two formats:
-tab-delimited and web server-style "common log format."
-.Pp
-By default, rinetd does not produce a log file. To activate logging, add
+
+.SH LOGGING
+\fBrinetd\fR is able to produce a log file in either of two formats:
+tab-delimited and web server-style "common log format".
+.PP
+By default, \fBrinetd\fR does not produce a log file. To activate logging, add
 the following line to the configuration file:
-.Pp
-logfile log-file-location
-.Pp
-Example: logfile /var/log/rinetd.log
-.Pp
-By default, rinetd logs in a simple tab-delimited format containing
+.PP
+\fB    logfile log-file-location\fR
+.PP
+Example:
+.PP
+\fB    logfile /var/log/rinetd.log\fR
+.PP
+By default, \fBrinetd\fR logs in a simple tab-delimited format containing
 the following information:
-.Pp
-Date and time
-.Pp
-Client address
-.Pp
-Listening host
-.Pp
-Listening port
-.Pp
-Forwarded-to host
-.Pp
-Forwarded-to port
-.Pp
-Bytes received from client
-.Pp
-Bytes sent to client
-.Pp
-Result message
-.Pp
+.PP
+    Date and time
+.PP
+    Client address
+.PP
+    Listening host
+.PP
+    Listening port
+.PP
+    Forwarded-to host
+.PP
+    Forwarded-to port
+.PP
+    Bytes received from client
+.PP
+    Bytes sent to client
+.PP
+    Result message
+.PP
 To activate web server-style "common log format" logging,
 add the following line to the configuration file:
-.Pp
-logcommon
-.Sh COMMAND LINE OPTIONS
-The -c command line option is used to specify an alternate
-configuration file.
-.Pp
-The -f command line option is used to run rinetd in the
-foreground, without forking to the background.
-.Pp
-The -h command line option produces a short help message.
-.Pp
-The -v command line option displays the version number.
-.Sh REINITIALIZING RINETD
-The kill -1 signal (SIGHUP) can be used to cause rinetd
+.PP
+\fB    logcommon\fR
+
+.SH REINITIALIZING RINETD
+.PP
+The \fBkill -1\fR signal (\fISIGHUP\fR) can be used to cause \fBrinetd\fR
 to reload its configuration file without interrupting existing
 connections.
+.PP
 Under Linux\(tm the process id is saved in the file \fI/var/run/rinetd.pid\fR
-to facilitate the kill -HUP. An alternate
-filename can be provided by using the <code>pidlogfile</code>
-configuration file option.
+to facilitate the \fBkill -HUP\fR. An alternate filename can be provided by
+using the pidlogfile configuration file option.
 
-.Sh LIMITATIONS
-rinetd redirects TCP connections only. There is
-no support for UDP. rinetd only redirects protocols which
-use a single TCP socket. This rules out FTP.
-.Sh BUGS
-The server redirected to is not able to identify the host the
-client really came from. This cannot be corrected; however,
-the log produced by rinetd provides a way to obtain this
-information. Under Unix, Sockets would theoretically lose data when closed
-with SO_LINGER turned off, but in Linux this is not the case (kernel
-source comments support this belief on my part). On non-Linux Unix platforms,
-alternate code which uses a different trick to work around blocking close()
-is provided, but this code is untested. The logging is inadequate.
-The duration of each connection should be logged.
-.Sh LICENSE
+.SH BUGS AND LIMITATIONS
+.PP
+\fBrinetd\fR only redirects protocols which use a single TCP or UDP
+socket. This rules out FTP.
+.PP
+The server redirected to is not able to identify the host the client really
+came from. This cannot be corrected; however, the log produced by \fBrinetd\fR
+provides a way to obtain this information. Under Unix, Sockets would
+theoretically lose data when closed with SO_LINGER turned off, but in Linux
+this is not the case (kernel source comments support this belief on my part).
+On non-Linux Unix platforms, alternate code which uses a different trick to
+work around blocking close() is provided, but this code is untested.
+.PP
+The logging is inadequate. The duration of each connection should be logged.
+.SH LICENSE
 Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
-.Pp
+.PP
 Copyright (c) 2003\-2017 Sam Hocevar
-.Pp
+.PP
 This software is released for free use under the terms of
-the GNU Public License, version 2 or higher. NO WARRANTY
+the GNU General Public License, version 2 or higher. NO WARRANTY
 IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK.
-.Sh CONTACT INFORMATION
+.SH CONTACT INFORMATION
 See https://github.com/samhocevar/rinetd/releases for the latest release.
-.Pp
+.PP
 Thomas Boutell can be reached by email: boutell@boutell.com
-.Pp
+.PP
 Sam Hocevar can be reached by email: sam@hocevar.net
-.Sh THANKS
+.SH THANKS
 Thanks are due to Bill Davidsen, Libor Pechachek, Sascha Ziemann, the
 Apache Group, and many others who have contributed advice
 and/or source code to this and other free software projects.
