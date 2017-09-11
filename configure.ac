@@ -2,8 +2,8 @@
 AC_PREREQ(2.52)
 AC_INIT(rinetd, 0.70, sam@hocevar.net)
 AC_CONFIG_AUX_DIR(.auto)
-AC_CONFIG_SRCDIR([getopt.h])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_SRCDIR([src/rinetd.c])
+AC_CONFIG_HEADER([src/config.h])
 AM_INIT_AUTOMAKE([no-define tar-ustar silent-rules])
 
 # Checks for programs.
@@ -34,4 +34,5 @@ AC_FUNC_STRFTIME
 AC_CHECK_FUNCS([gethostbyname memset select socket strstr daemon fork sigaction])
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([src/Makefile])
 AC_OUTPUT
