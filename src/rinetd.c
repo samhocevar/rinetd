@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2019 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -248,8 +248,8 @@ static void readConfiguration(char const *file) {
 	}
 }
 
-void addServer(char *bindAddress, int bindPort, int bindProto,
-               char *connectAddress, int connectPort, int connectProto,
+void addServer(char *bindAddress, uint16_t bindPort, int bindProto,
+               char *connectAddress, uint16_t connectPort, int connectProto,
                int serverTimeout, char *sourceAddress)
 {
 	/* Turn all of this stuff into reasonable addresses */
@@ -287,7 +287,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 		/* Warn -- don't exit. */
 		syslog(LOG_ERR, "couldn't bind to "
 			"address %s port %d (%m)\n",
-			bindAddress, bindPort);
+			bindAddress, (int)bindPort);
 		closesocket(fd);
 		exit(1);
 	}
@@ -297,7 +297,7 @@ void addServer(char *bindAddress, int bindPort, int bindProto,
 			/* Warn -- don't exit. */
 			syslog(LOG_ERR, "couldn't listen to "
 				"address %s port %d (%m)\n",
-				bindAddress, bindPort);
+				bindAddress, (int)bindPort);
 			closesocket(fd);
 		}
 
@@ -988,10 +988,8 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 		bytesInput = cnx->remote.recvBytes;
 	}
 
-	char const *fromHost = "?";
-	int fromPort = 0;
-	char const *toHost =  "?";
-	int toPort =  0;
+	char const *fromHost = "?", *toHost = "?";
+	uint16_t fromPort = 0, toPort = 0;
 	if (srv != NULL) {
 		fromHost = srv->fromHost;
 		fromPort = srv->fromPort;
@@ -1026,8 +1024,8 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 				sign,
 				timz / 60,
 				timz % 60,
-				fromHost, fromPort,
-				toHost, toPort,
+				fromHost, (int)fromPort,
+				toHost, (int)toPort,
 				logMessages[result],
 				bytesOutput,
 				bytesInput);
@@ -1038,8 +1036,8 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 					"\t%d\t%s\n",
 				tstr,
 				addressText,
-				fromHost, fromPort,
-				toHost, toPort,
+				fromHost, (int)fromPort,
+				toHost, (int)toPort,
 				bytesInput,
 				bytesOutput,
 				logMessages[result]);

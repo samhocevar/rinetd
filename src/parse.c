@@ -21,8 +21,9 @@
 	int currentLine; \
 	int isAuthAllow; \
 	char *tmpPort; \
-	int tmpPortNum, tmpProto; \
-	int bindPortNum, bindProto, connectPortNum, connectProto; \
+	uint16_t tmpPortNum, tmpProto; \
+	uint16_t bindPortNum, connectPortNum; \
+	int bindProto, connectProto; \
 	int serverTimeout; \
 	char *bindAddress, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
@@ -353,7 +354,7 @@ YY_ACTION(void) yy_1_sol(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_sol\n"));
   {
-#line 156
+#line 158
    ++yy->currentLine; ;
   }
 #undef yythunkpos
@@ -367,7 +368,7 @@ YY_ACTION(void) yy_1_invalid_syntax(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_invalid_syntax\n"));
   {
-#line 135
+#line 137
   
 	fprintf(stderr, "rinetd: invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
@@ -385,7 +386,7 @@ YY_ACTION(void) yy_1_logcommon(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logcommon\n"));
   {
-#line 130
+#line 132
   
 	logFormatCommon = 1;
 ;
@@ -401,7 +402,7 @@ YY_ACTION(void) yy_1_pidlogfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_pidlogfile\n"));
   {
-#line 122
+#line 124
   
 	pidLogFileName = strdup(yytext);
 	if (!pidLogFileName) {
@@ -420,7 +421,7 @@ YY_ACTION(void) yy_1_logfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logfile\n"));
   {
-#line 114
+#line 116
   
 	logFileName = strdup(yytext);
 	if (!logFileName) {
@@ -439,7 +440,7 @@ YY_ACTION(void) yy_1_auth_key(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_key\n"));
   {
-#line 111
+#line 113
    yy->isAuthAllow = (yytext[0] == 'a'); ;
   }
 #undef yythunkpos
@@ -453,7 +454,7 @@ YY_ACTION(void) yy_1_auth_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_rule\n"));
   {
-#line 89
+#line 91
   
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
@@ -487,7 +488,7 @@ YY_ACTION(void) yy_3_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_3_proto\n"));
   {
-#line 86
+#line 88
    yy->tmpProto = protoTcp; ;
   }
 #undef yythunkpos
@@ -501,7 +502,7 @@ YY_ACTION(void) yy_2_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_2_proto\n"));
   {
-#line 85
+#line 87
    yy->tmpProto = protoUdp; ;
   }
 #undef yythunkpos
@@ -515,7 +516,7 @@ YY_ACTION(void) yy_1_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_proto\n"));
   {
-#line 84
+#line 86
    yy->tmpProto = protoTcp; ;
   }
 #undef yythunkpos
@@ -529,7 +530,7 @@ YY_ACTION(void) yy_1_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_port\n"));
   {
-#line 83
+#line 85
    yy->tmpPort = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -543,15 +544,16 @@ YY_ACTION(void) yy_1_full_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_full_port\n"));
   {
-#line 73
+#line 74
   
 	char const *proto = yy->tmpProto == protoTcp ? "tcp" : "udp";
 	struct servent *service = getservbyname(yy->tmpPort, proto);
-	yy->tmpPortNum = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
-	if (yy->tmpPortNum == 0 || yy->tmpPortNum >= 65536) {
+	int port = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
+	if (port <= 0 || port >= 65536) {
 		syslog(LOG_ERR, "port %s/%s missing or out of range\n", yy->tmpPort, proto);
 		PARSE_ERROR;
 	}
+	yy->tmpPortNum = (uint16_t)port;
 ;
   }
 #undef yythunkpos
@@ -565,7 +567,7 @@ YY_ACTION(void) yy_1_option_source(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_source\n"));
   {
-#line 70
+#line 71
    yy->sourceAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -579,7 +581,7 @@ YY_ACTION(void) yy_1_option_timeout(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_timeout\n"));
   {
-#line 69
+#line 70
    yy->serverTimeout = atoi(yytext); ;
   }
 #undef yythunkpos
@@ -593,7 +595,7 @@ YY_ACTION(void) yy_1_connect_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_port\n"));
   {
-#line 64
+#line 65
    yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; ;
   }
 #undef yythunkpos
@@ -607,7 +609,7 @@ YY_ACTION(void) yy_1_bind_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_port\n"));
   {
-#line 63
+#line 64
    yy->bindPortNum = yy->tmpPortNum; yy->bindProto = yy->tmpProto; ;
   }
 #undef yythunkpos
@@ -621,7 +623,7 @@ YY_ACTION(void) yy_1_connect_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_address\n"));
   {
-#line 62
+#line 63
    yy->connectAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -635,7 +637,7 @@ YY_ACTION(void) yy_1_bind_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_address\n"));
   {
-#line 61
+#line 62
    yy->bindAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -649,7 +651,7 @@ YY_ACTION(void) yy_1_server_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_server_rule\n"));
   {
-#line 52
+#line 53
   
 	addServer(yy->bindAddress, yy->bindPortNum, yy->bindProto,
 		yy->connectAddress, yy->connectPortNum, yy->connectProto,
@@ -1346,7 +1348,7 @@ YY_PARSE(yycontext *) YYRELEASE(yycontext *yyctx)
 }
 
 #endif
-#line 160 "parse.peg"
+#line 162 "parse.peg"
 
 
 void parseConfiguration(char const *file)

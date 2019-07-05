@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2019 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -9,6 +9,7 @@
 #pragma once
 
 #include <time.h>
+#include <stdint.h>
 
 enum ruleType {
 	allowRule,
@@ -33,12 +34,13 @@ struct _server_info {
 
 	/* In network order, for network purposes */
 	struct in_addr localAddr;
-	unsigned short localPort;
+	uint16_t localPort;
 	struct in_addr sourceAddr;
 
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
-	int fromPort, fromProto, toPort, toProto;
+	int16_t fromPort, toPort;
+	int fromProto, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
