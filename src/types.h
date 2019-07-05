@@ -11,12 +11,14 @@
 #include <time.h>
 #include <stdint.h>
 
-enum ruleType {
+typedef enum _rule_type ruleType;
+enum _rule_type {
 	allowRule,
 	denyRule,
 };
 
-enum protocolType {
+typedef enum _protocol_type protocolType;
+enum _protocol_type {
 	protoTcp = 1,
 	protoUdp = 2,
 };
@@ -25,7 +27,7 @@ typedef struct _rule Rule;
 struct _rule
 {
 	char *pattern;
-	int type;
+	ruleType type;
 };
 
 typedef struct _server_info ServerInfo;
@@ -40,7 +42,7 @@ struct _server_info {
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
 	int16_t fromPort, toPort;
-	int fromProto, toProto;
+	protocolType fromProto, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
@@ -54,7 +56,7 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
-	int proto;
+	protocolType proto;
 	/* recv: received on this socket
 		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;

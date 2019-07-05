@@ -248,8 +248,8 @@ static void readConfiguration(char const *file) {
 	}
 }
 
-void addServer(char *bindAddress, uint16_t bindPort, int bindProto,
-               char *connectAddress, uint16_t connectPort, int connectProto,
+void addServer(char *bindAddress, uint16_t bindPort, protocolType bindProto,
+               char *connectAddress, uint16_t connectPort, protocolType connectProto,
                int serverTimeout, char *sourceAddress)
 {
 	/* Turn all of this stuff into reasonable addresses */
