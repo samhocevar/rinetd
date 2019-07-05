@@ -56,9 +56,9 @@ struct _socket
 	SOCKET fd;
 	int proto;
 	/* recv: received on this socket
-		sent: sent to this socket from the other buffer */
+		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;
-	int recvBytes, sentBytes;
+	uint64_t totalBytesIn, totalBytesOut;
 	char *buffer;
 };
 

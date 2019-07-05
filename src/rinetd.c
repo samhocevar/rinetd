@@ -530,8 +530,8 @@ static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket
 	if (RINETD_BUFFER_SIZE == socket->recvPos) {
 		return;
 	}
-	int got = recv(socket->fd, socket->buffer + socket->recvPos,
-		RINETD_BUFFER_SIZE - socket->recvPos, 0);
+	int wanted = RINETD_BUFFER_SIZE - socket->recvPos;
+	int got = recv(socket->fd, socket->buffer + socket->recvPos, wanted, 0);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -545,7 +545,7 @@ static void handleRead(ConnectionInfo *cnx, Socket *socket, Socket *other_socket
 		handleClose(cnx, socket, other_socket);
 		return;
 	}
-	socket->recvBytes += got;
+	socket->totalBytesIn += got;
 	socket->recvPos += got;
 }
 
@@ -556,7 +556,7 @@ static void handleUdpRead(ConnectionInfo *cnx, char const *buffer, int bytes)
 		? bytes : RINETD_BUFFER_SIZE - socket->recvPos;
 	if (got > 0) {
 		memcpy(socket->buffer + socket->recvPos, buffer, got);
-		socket->recvBytes += got;
+		socket->totalBytesIn += got;
 		socket->recvPos += got;
 	}
 }
@@ -579,9 +579,9 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		addrlen = (SOCKLEN_T)sizeof(cnx->remoteAddress);
 	}
 
+	int wanted = other_socket->recvPos - socket->sentPos;
 	int got = sendto(socket->fd, other_socket->buffer + socket->sentPos,
-		other_socket->recvPos - socket->sentPos, 0,
-		addr, addrlen);
+		wanted, 0, addr, addrlen);
 	if (got < 0) {
 		if (GetLastError() == WSAEWOULDBLOCK) {
 			return;
@@ -593,8 +593,8 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 		return;
 	}
 	socket->sentPos += got;
-	socket->sentBytes += got;
-	if (socket->sentPos == other_socket->recvPos) {
+	socket->totalBytesOut += got;
+	if (got == wanted) {
 		socket->sentPos = other_socket->recvPos = 0;
 	}
 }
@@ -695,12 +695,12 @@ static void handleAccept(ServerInfo const *srv)
 	cnx->local.fd = INVALID_SOCKET;
 	cnx->local.proto = srv->toProto;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
-	cnx->local.recvBytes = cnx->local.sentBytes = 0;
+	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
 	cnx->remote.fd = nfd;
 	cnx->remote.proto = srv->fromProto;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
-	cnx->remote.recvBytes = cnx->remote.sentBytes = 0;
+	cnx->remote.totalBytesIn = cnx->remote.totalBytesOut = 0;
 	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
 	if (srv->fromProto == protoUdp)
 		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
@@ -980,12 +980,11 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 
 	char const *addressText = "?";
-	int bytesOutput = 0;
-	int bytesInput = 0;
+	int64_t bytesOut = 0, bytesIn = 0;
 	if (cnx != NULL) {
 		addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
-		bytesOutput = cnx->remote.sentBytes;
-		bytesInput = cnx->remote.recvBytes;
+		bytesOut = cnx->remote.totalBytesOut;
+		bytesIn = cnx->remote.totalBytesIn;
 	}
 
 	char const *fromHost = "?", *toHost = "?";
@@ -1018,7 +1017,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 			fprintf(logFile, "%s - - "
 				"[%s %c%.2d%.2d] "
 				"\"GET /rinetd-services/%s/%d/%s/%d/%s HTTP/1.0\" "
-				"200 %d - - - %d\n",
+				"200 %llu - - - %llu\n",
 				addressText,
 				tstr,
 				sign,
@@ -1027,19 +1026,19 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 				fromHost, (int)fromPort,
 				toHost, (int)toPort,
 				logMessages[result],
-				bytesOutput,
-				bytesInput);
+				(unsigned long long int)bytesOut,
+				(unsigned long long int)bytesIn);
 		} else {
 			/* Write an rinetd-specific log entry with a
 				less goofy format. */
-			fprintf(logFile, "%s\t%s\t%s\t%d\t%s\t%d\t%d"
-					"\t%d\t%s\n",
+			fprintf(logFile, "%s\t%s\t%s\t%d\t%s\t%d\t%llu"
+					"\t%llu\t%s\n",
 				tstr,
 				addressText,
 				fromHost, (int)fromPort,
 				toHost, (int)toPort,
-				bytesInput,
-				bytesOutput,
+				(unsigned long long int)bytesIn,
+				(unsigned long long int)bytesOut,
 				logMessages[result]);
 		}
 	}
