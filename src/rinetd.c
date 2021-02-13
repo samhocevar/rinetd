@@ -645,7 +645,7 @@ static void handleAccept(ServerInfo const *srv)
 		/* In TCP mode, get remote address using accept(). */
 		nfd = accept(srv->fd, &addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
-			syslog(LOG_ERR, "accept(%d): %m\n", srv->fd);
+			syslog(LOG_ERR, "accept(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -666,7 +666,7 @@ static void handleAccept(ServerInfo const *srv)
 			if (GetLastError() == WSAEINPROGRESS) {
 				return;
 			}
-			syslog(LOG_ERR, "recvfrom(%d): %m\n", srv->fd);
+			syslog(LOG_ERR, "recvfrom(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -774,7 +774,8 @@ static void handleAccept(ServerInfo const *srv)
 	/* Send a zero-size UDP packet to simulate a connection */
 	if (srv->toProto == protoUdp) {
 		int got = sendto(cnx->local.fd, NULL, 0, 0,
-			&saddr, (SOCKLEN_T)sizeof(saddr));
+		                 (struct sockaddr const *)&saddr,
+		                 (SOCKLEN_T)sizeof(saddr));
 		/* FIXME: we ignore errors here... is it safe? */
 		(void)got;
 	}
