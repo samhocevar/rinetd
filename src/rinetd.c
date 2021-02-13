@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2019 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -238,7 +238,7 @@ static void readConfiguration(char const *file) {
 		logFile = NULL;
 	}
 	if (logFileName) {
-		logFile = fopen(logFileName, "a");
+		logFile = fopen(logFileName, "a+");
 		if (logFile) {
 			setvbuf(logFile, NULL, _IONBF, 0);
 		} else {
