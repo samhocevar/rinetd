@@ -14,6 +14,10 @@
 #	define RETSIGTYPE void
 #endif
 
+#ifdef _MSC_VER
+#	include <malloc.h>
+#endif
+
 #if _WIN32
 #	include "getopt.h"
 #else
@@ -439,7 +443,12 @@ static void selectPass(void)
 	timeout.tv_sec = timeout.tv_usec = 0;
 	time_t now = time(NULL);
 
+#ifdef _MSC_VER
+	fd_set* readfds = (fd_set*)alloca(sizeof(*readfds) * fdSetCount);
+	fd_set* writefds = (fd_set*)alloca(sizeof(*writefds) * fdSetCount);
+#else
 	fd_set readfds[fdSetCount], writefds[fdSetCount];
+#endif
 	FD_ZERO_EXT(readfds);
 	FD_ZERO_EXT(writefds);
 	/* Server sockets */
@@ -657,7 +666,7 @@ static void handleAccept(ServerInfo const *srv)
 			to read a lot of data otherwise the datagram contents
 			may be lost later. */
 		nfd = srv->fd;
-		ssize_t ret = recvfrom(nfd, globalUdpBuffer,
+		SSIZE_T ret = recvfrom(nfd, globalUdpBuffer,
 				sizeof(globalUdpBuffer), 0, &addr, &addrlen);
 		if (ret < 0) {
 			if (GetLastError() == WSAEWOULDBLOCK) {
