@@ -141,7 +141,7 @@ invalid_syntax  =  < (!eol .)+ > eol
 }
 
 service  =  name
-address  =  ipv4 | ipv6 | hostname  # TODO: IPV6
+address  =  ipv4 | ipv6 | hostname
 pattern  =  [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+ ('.' [0-9*?]+)?)?)?
 number   =  digit+
 
@@ -150,14 +150,15 @@ ipv6     =  (hexdigit | ':')+ | '[' ipv6 ']'
 hostname =  (label '.')* name '.'?
 
 
-name     =  [a-zA-Z_] [-a-zA-Z0-9_]*
-label    =  [0-9]* name
+name     =  id ('-' | id | digit)*
+label    =  (id | digit) ('-' | id | digit)* # DNS labels may have digits
 filename =  '"' [^"]+ '"'
          |  [^ \t\r\n]+
 
 -        =  [ \t]+
 digit    =  [0-9]
 hexdigit =  [0-9a-fA-F]
+id       =  [a-zA-Z_]
 sol      =  { ++yy->currentLine; }
 eol      =  '\r'? '\n' | eof
 eof      =  '\0'
