@@ -726,7 +726,7 @@ YY_RULE(int) yy_name(yycontext *yy)
 {  int yypos0= yy->__pos, yythunkpos0= yy->__thunkpos;
   yyprintf((stderr, "%s\n", "name"));  if (!yymatchClass(yy, (unsigned char *)"\000\000\000\000\000\000\000\000\376\377\377\007\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l15;
   l16:;	
-  {  int yypos17= yy->__pos, yythunkpos17= yy->__thunkpos;  if (!yymatchClass(yy, (unsigned char *)"\000\000\000\000\000\000\377\003\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l17;  goto l16;
+  {  int yypos17= yy->__pos, yythunkpos17= yy->__thunkpos;  if (!yymatchClass(yy, (unsigned char *)"\000\000\000\000\000\040\377\003\376\377\377\207\376\377\377\007\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000")) goto l17;  goto l16;
   l17:;	  yy->__pos= yypos17; yy->__thunkpos= yythunkpos17;
   }
   yyprintf((stderr, "  ok   %s @ %s\n", "name", yy->__buf+yy->__pos));

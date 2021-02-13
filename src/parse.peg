@@ -1,6 +1,6 @@
 #  Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
 #                        and Boutell.Com, Inc.
-#            © 2003—2019 Sam Hocevar <sam@hocevar.net>
+#            © 2003—2021 Sam Hocevar <sam@hocevar.net>
 #
 #  This software is released for free use under the terms of
 #  the GNU Public License, version 2 or higher. NO WARRANTY
@@ -149,7 +149,7 @@ ipv4     =  number '.' number '.' number '.' number | '0'
 hostname =  ([-0-9a-zA-Z_]+ '.')* [a-zA-Z][-0-9a-zA-Z_]* '.'?
 
 
-name     =  [a-zA-Z][a-zA-Z0-9_]*
+name     =  [a-zA-Z][-a-zA-Z0-9_]*
 filename =  '"' [^"]+ '"'
          | [^ \t\r\n]+
 
