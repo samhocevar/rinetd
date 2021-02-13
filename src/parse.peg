@@ -23,10 +23,10 @@
 	int isAuthAllow; \
 	char *tmpPort; \
 	uint16_t tmpPortNum, tmpProto; \
-	uint16_t bindPortNum, connectPortNum; \
+	uint16_t connectPortNum; \
 	int bindProto, connectProto; \
 	int serverTimeout; \
-	char *bindAddress, *connectAddress, *sourceAddress;
+	char *bindAddress, *bindPort, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
 	int yyc = fgetc(yyctx->fp); \
@@ -51,7 +51,7 @@ comment  =  "#" (!eol .)*
 
 server-rule  =  bind-address - bind-port - connect-address - connect-port (-? server-options)?
 {
-	addServer(yy->bindAddress, yy->bindPortNum, yy->bindProto,
+	addServer(yy->bindAddress, yy->bindPort, yy->bindProto,
 		yy->connectAddress, yy->connectPortNum, yy->connectProto,
 		yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT,
 		yy->sourceAddress);
@@ -61,7 +61,7 @@ server-rule  =  bind-address - bind-port - connect-address - connect-port (-? se
 
 bind-address     =  < address > { yy->bindAddress = strdup(yytext); }
 connect-address  =  < address > { yy->connectAddress = strdup(yytext); }
-bind-port        =  full-port { yy->bindPortNum = yy->tmpPortNum; yy->bindProto = yy->tmpProto; }
+bind-port        =  full-port { yy->bindPort = yy->tmpPort; yy->bindProto = yy->tmpProto; }
 connect-port     =  full-port { yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; }
 server-options   =  "[" -? option-list -? "]"
 

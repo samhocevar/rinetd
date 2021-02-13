@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2019 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -248,101 +248,103 @@ static void readConfiguration(char const *file) {
 	}
 }
 
-void addServer(char *bindAddress, uint16_t bindPort, protocolType bindProto,
+void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
                char *connectAddress, uint16_t connectPort, protocolType connectProto,
                int serverTimeout, char *sourceAddress)
 {
-	/* Turn all of this stuff into reasonable addresses */
-	struct in_addr iaddr;
-	if (getAddress(bindAddress, &iaddr) < 0) {
-		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
-			bindAddress);
-		exit(1);
-	}
-	struct in_addr isourceaddr;
-	isourceaddr.s_addr = INADDR_ANY;
-	if (sourceAddress && getAddress(sourceAddress, &isourceaddr) < 0) {
+	ServerInfo si = {
+		.fromHost = bindAddress,
+		.fromProto = bindProto,
+		.toHost = connectAddress,
+		.toPort = connectPort,
+		.toProto = connectProto,
+		.serverTimeout = serverTimeout,
+	};
+
+	si.sourceAddr.s_addr = INADDR_ANY;
+	if (sourceAddress && getAddress(sourceAddress, &si.sourceAddr) < 0) {
 		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
 			sourceAddress);
 		exit(1);
 	}
+
 	/* Make a server socket */
-	SOCKET fd = socket(PF_INET,
-	                   bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
-	                   bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
-	if (fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "couldn't create "
-			"server socket! (%m)\n");
-		exit(1);
-	}
-	struct sockaddr_in saddr;
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
-	saddr.sin_port = htons(bindPort);
-	int tmp = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-		(const char *) &tmp, sizeof(tmp));
-	if (bind(fd, (struct sockaddr *)
-		&saddr, sizeof(saddr)) == SOCKET_ERROR) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "couldn't bind to "
-			"address %s port %d (%m)\n",
-			bindAddress, (int)bindPort);
-		closesocket(fd);
+	struct addrinfo hints =
+	{
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
+		.ai_flags = AI_PASSIVE,
+	};
+	struct addrinfo *servinfo;
+	int ret = getaddrinfo(bindAddress, bindPort, &hints, &servinfo);
+	if (ret != 0) {
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
 		exit(1);
 	}
 
-	if (bindProto == protoTcp) {
-		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
-			/* Warn -- don't exit. */
-			syslog(LOG_ERR, "couldn't listen to "
-				"address %s port %d (%m)\n",
-				bindAddress, (int)bindPort);
-			closesocket(fd);
+	for (struct addrinfo *it = servinfo; it; it = it->ai_next) {
+		si.fd = socket(it->ai_family,
+			bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
+			bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
+		if (si.fd == INVALID_SOCKET) {
+			syslog(LOG_ERR, "couldn't create server socket! (%m)\n");
+			freeaddrinfo(servinfo);
+			exit(1);
 		}
 
-		/* Make socket nonblocking in TCP mode only, otherwise
-			we may miss some data. */
-		setSocketDefaults(fd);
-	}
+		int tmp = 1;
+		setsockopt(si.fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &tmp, sizeof(tmp));
 
-	if (getAddress(connectAddress, &iaddr) < 0) {
+		if (bind(si.fd, it->ai_addr, it->ai_addrlen) == SOCKET_ERROR) {
+			syslog(LOG_ERR, "couldn't bind to address %s port %s (%m)\n",
+				bindAddress, bindPort);
+			closesocket(si.fd);
+			freeaddrinfo(servinfo);
+			exit(1);
+		}
+
+		if (bindProto == protoTcp) {
+			if (listen(si.fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+				/* Warn -- don't exit. */
+				syslog(LOG_ERR, "couldn't listen to address %s port %s (%m)\n",
+					bindAddress, bindPort);
+				/* XXX: check whether this is correct */
+				closesocket(si.fd);
+			}
+
+			/* Make socket nonblocking in TCP mode only, otherwise
+				we may miss some data. */
+			setSocketDefaults(si.fd);
+		}
+
+		si.fromPort = it->ai_addr->sa_family == AF_INET
+				? ntohs(((struct sockaddr_in*)it->ai_addr)->sin_port)
+				: ntohs(((struct sockaddr_in6*)it->ai_addr)->sin6_port);
+		break;
+	}
+	freeaddrinfo(servinfo);
+
+	if (getAddress(connectAddress, &si.localAddr) < 0) {
 		/* Warn -- don't exit. */
 		syslog(LOG_ERR, "host %s could not be resolved.\n",
 			bindAddress);
-		closesocket(fd);
+		closesocket(si.fd);
 		exit(1);
 	}
+	si.localPort = htons(connectPort);
+
+#ifndef _WIN32
+	if (si.fd > maxfd) {
+		maxfd = si.fd;
+	}
+#endif
+
 	/* Allocate server info */
-	seInfo = (ServerInfo *)
-		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+	seInfo = (ServerInfo *)realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
 	if (!seInfo) {
 		exit(1);
 	}
-	ServerInfo *srv = &seInfo[seTotal];
-	memset(srv, 0, sizeof(*srv));
-	srv->fd = fd;
-	srv->localAddr = iaddr;
-	srv->localPort = htons(connectPort);
-	srv->fromHost = bindAddress;
-	if (!srv->fromHost) {
-		exit(1);
-	}
-	srv->fromPort = bindPort;
-	srv->fromProto = bindProto;
-	srv->sourceAddr = isourceaddr;
-	srv->toHost = connectAddress;
-	if (!srv->toHost) {
-		exit(1);
-	}
-	srv->toPort = connectPort;
-	srv->toProto = connectProto;
-	srv->serverTimeout = serverTimeout;
-#ifndef _WIN32
-	if (fd > maxfd) {
-		maxfd = fd;
-	}
-#endif
+	seInfo[seTotal] = si;
 	++seTotal;
 }
 

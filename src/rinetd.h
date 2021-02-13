@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2019 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -46,7 +46,7 @@ extern FILE *logFile;
 
 /* Functions */
 
-void addServer(char *bindAddress, uint16_t bindPort, protocolType bindProto,
+void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
                char *connectAddress, uint16_t connectPort, protocolType connectProto,
                int serverTimeout, char *sourceAddress);
 
