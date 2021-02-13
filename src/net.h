@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -35,6 +35,12 @@
 #ifndef FIONBIO
 #	include <sys/filio.h>
 #endif /* FIONBIO */
+
+#if HAVE_SSIZE_T
+#	define SSIZE_T ssize_t
+#else
+#	define SSIZE_T int
+#endif
 
 #if HAVE_SOCKLEN_T
 #	define SOCKLEN_T socklen_t

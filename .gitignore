@@ -1,5 +1,6 @@
 .auto
 .deps
+.dirstamp
 Makefile
 Makefile.in
 stamp-*
@@ -13,4 +14,8 @@ configure
 
 *.o
 rinetd
+rinetd.exe
 
+*.vcxproj.user
+Debug
+Release
