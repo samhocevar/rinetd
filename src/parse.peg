@@ -1,6 +1,6 @@
 #  Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
 #                        and Boutell.Com, Inc.
-#            © 2003—2017 Sam Hocevar <sam@hocevar.net>
+#            © 2003—2021 Sam Hocevar <sam@hocevar.net>
 #
 #  This software is released for free use under the terms of
 #  the GNU Public License, version 2 or higher. NO WARRANTY
@@ -22,8 +22,9 @@
 	int currentLine; \
 	int isAuthAllow; \
 	char *tmpPort; \
-	int tmpPortNum, tmpProto; \
-	int bindPortNum, bindProto, connectPortNum, connectProto; \
+	uint16_t tmpPortNum, tmpProto; \
+	uint16_t bindPortNum, connectPortNum; \
+	int bindProto, connectProto; \
 	int serverTimeout; \
 	char *bindAddress, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
@@ -73,11 +74,12 @@ full-port  =  port proto
 {
 	char const *proto = yy->tmpProto == protoTcp ? "tcp" : "udp";
 	struct servent *service = getservbyname(yy->tmpPort, proto);
-	yy->tmpPortNum = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
-	if (yy->tmpPortNum == 0 || yy->tmpPortNum >= 65536) {
+	int port = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
+	if (port <= 0 || port >= 65536) {
 		syslog(LOG_ERR, "port %s/%s missing or out of range\n", yy->tmpPort, proto);
 		PARSE_ERROR;
 	}
+	yy->tmpPortNum = (uint16_t)port;
 }
 
 port   = < (number | service) >   { yy->tmpPort = strdup(yytext); }
@@ -145,12 +147,13 @@ number   =  digit+
 
 ipv4     =  number '.' number '.' number '.' number | '0'
 ipv6     =  (hexdigit | ':')+ | '[' ipv6 ']'
-hostname =  ([-0-9a-zA-Z_]+ '.')* [a-zA-Z][-0-9a-zA-Z_]* '.'?
+hostname =  (label '.')* name '.'?
 
 
-name     =  [a-zA-Z][a-zA-Z0-9_]*
+name     =  [a-zA-Z_] [-a-zA-Z0-9_]*
+label    =  [0-9]* name
 filename =  '"' [^"]+ '"'
-         | [^ \t\r\n]+
+         |  [^ \t\r\n]+
 
 -        =  [ \t]+
 digit    =  [0-9]

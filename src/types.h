@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2019 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -9,13 +9,16 @@
 #pragma once
 
 #include <time.h>
+#include <stdint.h>
 
-enum ruleType {
+typedef enum _rule_type ruleType;
+enum _rule_type {
 	allowRule,
 	denyRule,
 };
 
-enum protocolType {
+typedef enum _protocol_type protocolType;
+enum _protocol_type {
 	protoTcp = 1,
 	protoUdp = 2,
 };
@@ -24,7 +27,7 @@ typedef struct _rule Rule;
 struct _rule
 {
 	char *pattern;
-	int type;
+	ruleType type;
 };
 
 typedef struct _server_info ServerInfo;
@@ -33,12 +36,13 @@ struct _server_info {
 
 	/* In network order, for network purposes */
 	struct in_addr localAddr;
-	unsigned short localPort;
+	uint16_t localPort;
 	struct in_addr sourceAddr;
 
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
-	int fromPort, fromProto, toPort, toProto;
+	int16_t fromPort, toPort;
+	protocolType fromProto, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
@@ -52,11 +56,11 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
-	int proto;
+	protocolType proto;
 	/* recv: received on this socket
-		sent: sent to this socket from the other buffer */
+		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;
-	int recvBytes, sentBytes;
+	uint64_t totalBytesIn, totalBytesOut;
 	char *buffer;
 };
 
