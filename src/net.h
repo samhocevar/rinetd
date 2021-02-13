@@ -12,6 +12,8 @@
 	/* Define this to a reasonably large value */
 #	define FD_SETSIZE 4096
 #	include <winsock2.h>
+#	include <ws2ipdef.h>
+#	include <ws2tcpip.h>
 #	include <windows.h>
 #else
 #	include <sys/types.h>

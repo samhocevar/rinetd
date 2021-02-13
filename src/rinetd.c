@@ -654,6 +654,7 @@ static void handleAccept(ServerInfo const *srv)
 	SOCKET nfd;
 	if (srv->fromProto == protoTcp) {
 		/* In TCP mode, get remote address using accept(). */
+		// FIXME IPv6: need to reuse addrlen from the bind() call
 		nfd = accept(srv->fd, &addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
 			syslog(LOG_ERR, "accept(%llu): %m\n", (long long unsigned int)srv->fd);
