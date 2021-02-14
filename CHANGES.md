@@ -1,5 +1,6 @@
 ## Version 0.71
 
+ * IPv6 support
  * fix a display overflow in data usage statistics
  * made the configuration parser more tolerant with service names that contain
    dashes (e.g. snmp-trap) or hostnames with underscores (e.g. \_http.example.com).

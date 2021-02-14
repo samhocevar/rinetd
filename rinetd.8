@@ -1,4 +1,4 @@
-.TH rinetd 8 "2017-09-09" "rinetd 0.70"
+.TH rinetd 8 "2021-09-09" "rinetd 0.70"
 
 .SH NAME
 rinetd \- internet redirection server
@@ -80,7 +80,7 @@ Service names can be specified instead of port numbers. On most systems,
 service names are defined in the file \fI/etc/services\fR.
 .PP
 Both IP addresses and hostnames are accepted for
-bindaddress and connectaddress.
+bindaddress and connectaddress, including IPv6.
 .PP
 
 .SS UDP timeout option
@@ -99,10 +99,10 @@ the UDP port for 3600 seconds.
 A forwarding rule option allows to bind to a specific local address when
 sending data to the other end. This is done using the \fIsrc\fR option:
 .PP
-\fB    192.168.1.1 80  10.1.1.2 80  [src=192.168.1.2]\fR
+\fB    192.168.1.1 80  10.1.1.127 80  [src=10.1.1.2]\fR
 .PP
-Assuming the local host has two IP addresses, 192.168.1.1 and 192.168.1.2, this
-rule ensures that forwarded packets are sent using source address 192.168.1.2.
+Assuming the local host has two IP addresses, 10.1.1.1 and 10.1.1.2, this
+rule ensures that forwarded packets are sent using source address 10.1.1.2.
 
 .SH ALLOW AND DENY RULES
 Configuration files can also contain allow and deny rules.
@@ -216,7 +216,7 @@ The logging is inadequate. The duration of each connection should be logged.
 .SH LICENSE
 Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc.
 .PP
-Copyright (c) 2003\-2017 Sam Hocevar
+Copyright (c) 2003\-2021 Sam Hocevar
 .PP
 This software is released for free use under the terms of
 the GNU General Public License, version 2 or higher. NO WARRANTY
