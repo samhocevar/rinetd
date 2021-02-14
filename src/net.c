@@ -32,6 +32,10 @@ void setSocketDefaults(SOCKET fd) {
 #endif
 }
 
+int getSocketType(int protocol) {
+	return protocol == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
+}
+
 uint16_t getPort(struct addrinfo* ai) {
 	switch (ai->ai_family) {
 		case AF_INET:

@@ -278,7 +278,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	{
 		.ai_family = AF_UNSPEC,
 		.ai_protocol = bindProtocol,
-		.ai_socktype = bindProtocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM,
+		.ai_socktype = getSocketType(bindProtocol),
 		.ai_flags = AI_PASSIVE,
 	};
 	struct addrinfo *servinfo;
@@ -733,9 +733,7 @@ static void handleAccept(ServerInfo const *srv)
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	struct sockaddr_in saddr;
-	cnx->local.fd = socket(PF_INET,
-		srv->toProtocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM,
-		srv->toProtocol);
+	cnx->local.fd = socket(PF_INET, getSocketType(srv->toProtocol), srv->toProtocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m\n");
 		if (cnx->remote.protocol == IPPROTO_TCP)
