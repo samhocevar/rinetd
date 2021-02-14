@@ -21,12 +21,10 @@
 	FILE *fp; \
 	int currentLine; \
 	int isAuthAllow; \
-	char *tmpPort; \
-	uint16_t tmpPortNum, tmpProto; \
-	uint16_t connectPortNum; \
-	int bindProto, connectProto; \
+	char *tmpPort, *bindPort, *connectPort; \
+	int tmpProto, bindProto, connectProto; \
 	int serverTimeout; \
-	char *bindAddress, *bindPort, *connectAddress, *sourceAddress;
+	char *bindAddress, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
 	int yyc = fgetc(yyctx->fp); \
@@ -52,7 +50,7 @@ comment  =  "#" (!eol .)*
 server-rule  =  bind-address - bind-port - connect-address - connect-port (-? server-options)?
 {
 	addServer(yy->bindAddress, yy->bindPort, yy->bindProto,
-		yy->connectAddress, yy->connectPortNum, yy->connectProto,
+		yy->connectAddress, yy->connectPort, yy->connectProto,
 		yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT,
 		yy->sourceAddress);
 	yy->bindAddress = yy->connectAddress = yy->sourceAddress = NULL;
@@ -62,7 +60,7 @@ server-rule  =  bind-address - bind-port - connect-address - connect-port (-? se
 bind-address     =  < address > { yy->bindAddress = strdup(yytext); }
 connect-address  =  < address > { yy->connectAddress = strdup(yytext); }
 bind-port        =  full-port { yy->bindPort = yy->tmpPort; yy->bindProto = yy->tmpProto; }
-connect-port     =  full-port { yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; }
+connect-port     =  full-port { yy->connectPort = yy->tmpPort; yy->connectProto = yy->tmpProto; }
 server-options   =  "[" -? option-list -? "]"
 
 option-list     =  option (-? ',' -? option-list)?
@@ -71,16 +69,6 @@ option-timeout  =  "timeout" -? "=" -? < number >    { yy->serverTimeout = atoi(
 option-source   =  "src"     -? "=" -? < address >   { yy->sourceAddress = strdup(yytext); }
 
 full-port  =  port proto
-{
-	char const *proto = yy->tmpProto == IPPROTO_TCP ? "tcp" : "udp";
-	struct servent *service = getservbyname(yy->tmpPort, proto);
-	int port = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
-	if (port <= 0 || port >= 65536) {
-		syslog(LOG_ERR, "port %s/%s missing or out of range\n", yy->tmpPort, proto);
-		PARSE_ERROR;
-	}
-	yy->tmpPortNum = (uint16_t)port;
-}
 
 port   = < (number | service) >   { yy->tmpPort = strdup(yytext); }
 proto  = '/tcp'                   { yy->tmpProto = IPPROTO_TCP; }

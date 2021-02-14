@@ -47,6 +47,5 @@ extern FILE *logFile;
 /* Functions */
 
 void addServer(char *bindAddress, char *bindPort, int bindProtocol,
-               char *connectAddress, uint16_t connectPort, int connectProtocol,
+               char *connectAddress, char *connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress);
-

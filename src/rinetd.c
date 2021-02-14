@@ -212,6 +212,7 @@ static void clearConfiguration(void) {
 		free(srv->fromHost);
 		free(srv->toHost);
 		freeaddrinfo(srv->fromAddrInfo);
+		freeaddrinfo(srv->toAddrInfo);
 		if (srv->sourceAddrInfo) {
 			freeaddrinfo(srv->sourceAddrInfo);
 		}
@@ -257,14 +258,12 @@ static void readConfiguration(char const *file) {
 }
 
 void addServer(char *bindAddress, char *bindPort, int bindProtocol,
-               char *connectAddress, uint16_t connectPort, int connectProtocol,
+               char *connectAddress, char *connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress)
 {
 	ServerInfo si = {
 		.fromHost = bindAddress,
 		.toHost = connectAddress,
-		.toPort = connectPort,
-		.toProtocol = connectProtocol,
 		.serverTimeout = serverTimeout,
 	};
 
@@ -320,7 +319,22 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 		break;
 	}
 
-	/* Resolve source address if applicable */
+	/* Resolve destination address. */
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_protocol = connectProtocol;
+	hints.ai_socktype = getSocketType(connectProtocol);
+	hints.ai_flags = AI_PASSIVE;
+	ret = getaddrinfo(connectAddress, connectPort, &hints, &servinfo);
+	if (ret != 0) {
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+		freeaddrinfo(si.fromAddrInfo);
+		closesocket(si.fd);
+		exit(1);
+	}
+	si.toAddrInfo = servinfo;
+
+	/* Resolve source address if applicable. */
 	if (sourceAddress) {
 		memset(&hints, 0, sizeof(hints));
 		hints.ai_family = AF_UNSPEC,
@@ -330,19 +344,12 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 		ret = getaddrinfo(sourceAddress, NULL, &hints, &servinfo);
 		if (ret != 0) {
 			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+			freeaddrinfo(si.fromAddrInfo);
+			freeaddrinfo(si.toAddrInfo);
 			exit(1);
 		}
 		si.sourceAddrInfo = servinfo;
 	}
-
-	if (getAddress(connectAddress, &si.localAddr) < 0) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "host %s could not be resolved.\n",
-			bindAddress);
-		closesocket(si.fd);
-		exit(1);
-	}
-	si.localPort = htons(connectPort);
 
 #ifndef _WIN32
 	if (si.fd > maxfd) {
@@ -711,7 +718,7 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	cnx->local.fd = INVALID_SOCKET;
-	cnx->local.protocol = srv->toProtocol;
+	cnx->local.protocol = srv->toAddrInfo->ai_protocol;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
@@ -741,9 +748,8 @@ static void handleAccept(ServerInfo const *srv)
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
-	struct sockaddr_in saddr;
-	/* FIXME: don’t forget to switch to PF_INET6 for IPv6. */
-	cnx->local.fd = socket(PF_INET, getSocketType(srv->toProtocol), srv->toProtocol);
+	struct addrinfo* to = srv->toAddrInfo;
+	cnx->local.fd = socket(to->ai_family, to->ai_socktype, to->ai_protocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m\n");
 		if (cnx->remote.protocol == IPPROTO_TCP)
@@ -753,7 +759,7 @@ static void handleAccept(ServerInfo const *srv)
 		return;
 	}
 
-	if (srv->toProtocol == IPPROTO_TCP)
+	if (srv->toAddrInfo->ai_protocol == IPPROTO_TCP)
 		setSocketDefaults(cnx->local.fd);
 
 	/* Bind the local socket even though we use connect() later, so that
@@ -765,12 +771,8 @@ static void handleAccept(ServerInfo const *srv)
 		}
 	}
 
-	memset(&saddr, 0, sizeof(struct sockaddr_in));
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
-	saddr.sin_port = srv->localPort;
-	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
-		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
+	if (connect(cnx->local.fd, srv->toAddrInfo->ai_addr,
+			srv->toAddrInfo->ai_addrlen) == SOCKET_ERROR)
 	{
 		if ((GetLastError() != WSAEINPROGRESS) &&
 			(GetLastError() != WSAEWOULDBLOCK))
@@ -787,10 +789,9 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	/* Send a zero-size UDP packet to simulate a connection */
-	if (srv->toProtocol == IPPROTO_UDP) {
+	if (srv->toAddrInfo->ai_protocol == IPPROTO_UDP) {
 		int got = sendto(cnx->local.fd, NULL, 0, 0,
-		                 (struct sockaddr const *)&saddr,
-		                 (SOCKLEN_T)sizeof(saddr));
+			srv->toAddrInfo->ai_addr, srv->toAddrInfo->ai_addrlen);
 		/* FIXME: we ignore errors here... is it safe? */
 		(void)got;
 	}
@@ -1012,7 +1013,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 		fromHost = srv->fromHost;
 		fromPort = getPort(srv->fromAddrInfo);
 		toHost = srv->toHost;
-		toPort = srv->toPort;
+		toPort = getPort(srv->toAddrInfo);
 	}
 
 	if (result==logNotAllowed || result==logDenied)

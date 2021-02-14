@@ -20,12 +20,10 @@
 	FILE *fp; \
 	int currentLine; \
 	int isAuthAllow; \
-	char *tmpPort; \
-	uint16_t tmpPortNum, tmpProto; \
-	uint16_t connectPortNum; \
-	int bindProto, connectProto; \
+	char *tmpPort, *bindPort, *connectPort; \
+	int tmpProto, bindProto, connectProto; \
 	int serverTimeout; \
-	char *bindAddress, *bindPort, *connectAddress, *sourceAddress;
+	char *bindAddress, *connectAddress, *sourceAddress;
 #define YY_INPUT(yyctx, buf, result, max_size) \
 { \
 	int yyc = fgetc(yyctx->fp); \
@@ -358,7 +356,7 @@ YY_ACTION(void) yy_1_sol(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_sol\n"));
   {
-#line 162
+#line 150
    ++yy->currentLine; ;
   }
 #undef yythunkpos
@@ -372,7 +370,7 @@ YY_ACTION(void) yy_1_invalid_syntax(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_invalid_syntax\n"));
   {
-#line 137
+#line 125
   
 	fprintf(stderr, "rinetd: invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
@@ -390,7 +388,7 @@ YY_ACTION(void) yy_1_logcommon(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logcommon\n"));
   {
-#line 132
+#line 120
   
 	logFormatCommon = 1;
 ;
@@ -406,7 +404,7 @@ YY_ACTION(void) yy_1_pidlogfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_pidlogfile\n"));
   {
-#line 124
+#line 112
   
 	pidLogFileName = strdup(yytext);
 	if (!pidLogFileName) {
@@ -425,7 +423,7 @@ YY_ACTION(void) yy_1_logfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logfile\n"));
   {
-#line 116
+#line 104
   
 	logFileName = strdup(yytext);
 	if (!logFileName) {
@@ -444,7 +442,7 @@ YY_ACTION(void) yy_1_auth_key(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_key\n"));
   {
-#line 113
+#line 101
    yy->isAuthAllow = (yytext[0] == 'a'); ;
   }
 #undef yythunkpos
@@ -458,7 +456,7 @@ YY_ACTION(void) yy_1_auth_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_rule\n"));
   {
-#line 91
+#line 79
   
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
@@ -492,7 +490,7 @@ YY_ACTION(void) yy_3_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_3_proto\n"));
   {
-#line 88
+#line 76
    yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
@@ -506,7 +504,7 @@ YY_ACTION(void) yy_2_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_2_proto\n"));
   {
-#line 87
+#line 75
    yy->tmpProto = IPPROTO_UDP; ;
   }
 #undef yythunkpos
@@ -520,7 +518,7 @@ YY_ACTION(void) yy_1_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_proto\n"));
   {
-#line 86
+#line 74
    yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
@@ -534,31 +532,8 @@ YY_ACTION(void) yy_1_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_port\n"));
   {
-#line 85
+#line 73
    yy->tmpPort = strdup(yytext); ;
-  }
-#undef yythunkpos
-#undef yypos
-#undef yy
-}
-YY_ACTION(void) yy_1_full_port(yycontext *yy, char *yytext, int yyleng)
-{
-#define __ yy->__
-#define yypos yy->__pos
-#define yythunkpos yy->__thunkpos
-  yyprintf((stderr, "do yy_1_full_port\n"));
-  {
-#line 74
-  
-	char const *proto = yy->tmpProto == IPPROTO_TCP ? "tcp" : "udp";
-	struct servent *service = getservbyname(yy->tmpPort, proto);
-	int port = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
-	if (port <= 0 || port >= 65536) {
-		syslog(LOG_ERR, "port %s/%s missing or out of range\n", yy->tmpPort, proto);
-		PARSE_ERROR;
-	}
-	yy->tmpPortNum = (uint16_t)port;
-;
   }
 #undef yythunkpos
 #undef yypos
@@ -571,7 +546,7 @@ YY_ACTION(void) yy_1_option_source(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_source\n"));
   {
-#line 71
+#line 69
    yy->sourceAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -585,7 +560,7 @@ YY_ACTION(void) yy_1_option_timeout(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_timeout\n"));
   {
-#line 70
+#line 68
    yy->serverTimeout = atoi(yytext); ;
   }
 #undef yythunkpos
@@ -599,8 +574,8 @@ YY_ACTION(void) yy_1_connect_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_port\n"));
   {
-#line 65
-   yy->connectPortNum = yy->tmpPortNum; yy->connectProto = yy->tmpProto; ;
+#line 63
+   yy->connectPort = yy->tmpPort; yy->connectProto = yy->tmpProto; ;
   }
 #undef yythunkpos
 #undef yypos
@@ -613,7 +588,7 @@ YY_ACTION(void) yy_1_bind_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_port\n"));
   {
-#line 64
+#line 62
    yy->bindPort = yy->tmpPort; yy->bindProto = yy->tmpProto; ;
   }
 #undef yythunkpos
@@ -627,7 +602,7 @@ YY_ACTION(void) yy_1_connect_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_address\n"));
   {
-#line 63
+#line 61
    yy->connectAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -641,7 +616,7 @@ YY_ACTION(void) yy_1_bind_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_address\n"));
   {
-#line 62
+#line 60
    yy->bindAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -655,10 +630,10 @@ YY_ACTION(void) yy_1_server_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_server_rule\n"));
   {
-#line 53
+#line 51
   
 	addServer(yy->bindAddress, yy->bindPort, yy->bindProto,
-		yy->connectAddress, yy->connectPortNum, yy->connectProto,
+		yy->connectAddress, yy->connectPort, yy->connectProto,
 		yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT,
 		yy->sourceAddress);
 	yy->bindAddress = yy->connectAddress = yy->sourceAddress = NULL;
@@ -1039,7 +1014,7 @@ YY_RULE(int) yy_option_list(yycontext *yy)
 }
 YY_RULE(int) yy_full_port(yycontext *yy)
 {  int yypos0= yy->__pos, yythunkpos0= yy->__thunkpos;
-  yyprintf((stderr, "%s\n", "full_port"));  if (!yy_port(yy)) goto l92;  if (!yy_proto(yy)) goto l92;  yyDo(yy, yy_1_full_port, yy->__begin, yy->__end);
+  yyprintf((stderr, "%s\n", "full_port"));  if (!yy_port(yy)) goto l92;  if (!yy_proto(yy)) goto l92;
   yyprintf((stderr, "  ok   %s @ %s\n", "full_port", yy->__buf+yy->__pos));
   return 1;
   l92:;	  yy->__pos= yypos0; yy->__thunkpos= yythunkpos0;
@@ -1415,7 +1390,7 @@ YY_PARSE(yycontext *) YYRELEASE(yycontext *yyctx)
 }
 
 #endif
-#line 166 "parse.peg"
+#line 154 "parse.peg"
 
 
 void parseConfiguration(char const *file)

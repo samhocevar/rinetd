@@ -29,15 +29,10 @@ struct _server_info {
 	SOCKET fd;
 
 	/* In network order, for network purposes */
-	struct in_addr localAddr;
-	uint16_t localPort;
-	struct addrinfo *sourceAddrInfo;
+	struct addrinfo *fromAddrInfo, *toAddrInfo, *sourceAddrInfo;
 
-	/* In ASCII and local byte order, for logging purposes */
+	/* In ASCII, for logging purposes */
 	char *fromHost, *toHost;
-	struct addrinfo *fromAddrInfo;
-	int16_t toPort;
-	int toProtocol;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
