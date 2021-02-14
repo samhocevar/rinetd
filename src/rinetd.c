@@ -119,7 +119,6 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleAccept(ServerInfo const *srv);
 static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
-static int getAddress(char const *host, struct in_addr *iaddr);
 static int checkConnectionAllowed(ConnectionInfo const *cnx);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
@@ -870,59 +869,6 @@ static int checkConnectionAllowed(ConnectionInfo const *cnx)
 	}
 
 	return logAllowed;
-}
-
-static int getAddress(char const *host, struct in_addr *iaddr)
-{
-	/* If this is an IP address, use inet_addr() */
-	int is_ipv4 = 1, is_ipv6 = 0;
-	for (char const *p = host; *p; ++p) {
-		is_ipv6 |= (*p == ':' || *p == '[' || *p == ']');
-		is_ipv4 &= (isdigit(*p) || *p == '.');
-	}
-	if (is_ipv6) {
-		fprintf(stderr, "IPv6 addresses are not supported yet: %s\n", host);
-		return -1;
-	}
-
-	if (is_ipv4) {
-		iaddr->s_addr = inet_addr(host);
-		return 0;
-	}
-
-	/* Otherwise, use gethostbyname() */
-	struct hostent *h = gethostbyname(host);
-	if (h) {
-#ifdef h_addr
-		memcpy(&iaddr->s_addr, h->h_addr, 4);
-#else
-		memcpy(&iaddr->s_addr, h->h_addr_list[0], 4);
-#endif
-		return 0;
-	}
-
-	char const *msg = "(unknown DNS error)";
-	switch (h_errno)
-	{
-	case HOST_NOT_FOUND:
-		msg = "The specified host is unknown.";
-		break;
-#ifdef NO_DATA
-	case NO_DATA:
-#else
-	case NO_ADDRESS:
-#endif
-		msg = "The requested name is valid but does not have an IP address.";
-		break;
-	case NO_RECOVERY:
-		msg = "A non-recoverable name server error occurred.";
-		break;
-	case TRY_AGAIN:
-		msg = "A temporary error occurred on an authoritative name server.  Try again later.";
-		break;
-	}
-	syslog(LOG_ERR, "While resolving `%s' got: %s\n", host, msg);
-	return -1;
 }
 
 #if !HAVE_SIGACTION && !_WIN32
