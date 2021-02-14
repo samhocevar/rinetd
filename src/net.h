@@ -85,6 +85,6 @@ static inline int GetLastError(void) {
 #endif /* _WIN32 */
 
 void setSocketDefaults(SOCKET fd);
-int getSocketType(int protocol);
+struct addrinfo getAddrInfoHint(int protocol);
 int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b);
 uint16_t getPort(struct addrinfo* ai);

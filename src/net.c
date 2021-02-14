@@ -32,8 +32,13 @@ void setSocketDefaults(SOCKET fd) {
 #endif
 }
 
-int getSocketType(int protocol) {
-	return protocol == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
+struct addrinfo getAddrInfoHint(int protocol) {
+	return (struct addrinfo) {
+		.ai_family = AF_UNSPEC,
+		.ai_protocol = protocol,
+		.ai_socktype = protocol == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM,
+		.ai_flags = AI_PASSIVE,
+	};
 }
 
 int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b) {
