@@ -80,7 +80,7 @@ int logFormatCommon = 0;
 FILE *logFile = NULL;
 
 char const *logMessages[] = {
-        "unknown-error",
+	"unknown-error",
 	"done-local-closed",
 	"done-remote-closed",
 	"accept-failed -",
@@ -211,6 +211,7 @@ static void clearConfiguration(void) {
 		}
 		free(srv->fromHost);
 		free(srv->toHost);
+		freeaddrinfo(srv->fromAddrInfo);
 	}
 	/* Free memory associated with previous set. */
 	free(seInfo);
@@ -296,7 +297,7 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 		}
 
 		int tmp = 1;
-		setsockopt(si.fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &tmp, sizeof(tmp));
+		setsockopt(si.fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&tmp, sizeof(tmp));
 
 		if (bind(si.fd, it->ai_addr, it->ai_addrlen) == SOCKET_ERROR) {
 			syslog(LOG_ERR, "couldn't bind to address %s port %s (%m)\n",
@@ -320,12 +321,9 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 			setSocketDefaults(si.fd);
 		}
 
-		si.fromPort = it->ai_addr->sa_family == AF_INET
-				? ntohs(((struct sockaddr_in*)it->ai_addr)->sin_port)
-				: ntohs(((struct sockaddr_in6*)it->ai_addr)->sin6_port);
+		si.fromAddrInfo = it;
 		break;
 	}
-	freeaddrinfo(servinfo);
 
 	if (getAddress(connectAddress, &si.localAddr) < 0) {
 		/* Warn -- don't exit. */
@@ -1006,7 +1004,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	uint16_t fromPort = 0, toPort = 0;
 	if (srv != NULL) {
 		fromHost = srv->fromHost;
-		fromPort = srv->fromPort;
+		fromPort = getPort(srv->fromAddrInfo);
 		toHost = srv->toHost;
 		toPort = srv->toPort;
 	}

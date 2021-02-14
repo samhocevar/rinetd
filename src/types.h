@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2019 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -41,7 +41,8 @@ struct _server_info {
 
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
-	int16_t fromPort, toPort;
+	struct addrinfo *fromAddrInfo;
+	int16_t toPort;
 	protocolType fromProto, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules

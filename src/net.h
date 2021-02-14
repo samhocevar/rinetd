@@ -24,6 +24,8 @@
 #	include <arpa/inet.h>
 #endif
 
+#include <stdint.h>
+
 #if defined HAVE_ERRNO_H
 #	include <errno.h>
 #endif
@@ -79,4 +81,4 @@ static inline int GetLastError(void) {
 #endif /* _WIN32 */
 
 void setSocketDefaults(SOCKET fd);
-
+uint16_t getPort(struct addrinfo* ai);

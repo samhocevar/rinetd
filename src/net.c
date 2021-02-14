@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -12,8 +12,7 @@
 
 #include "net.h"
 
-void setSocketDefaults(SOCKET fd)
-{
+void setSocketDefaults(SOCKET fd) {
 	/* Make socket non-blocking (FIXME: this uses legacy API) */
 	FIONBIO_ARG_T ioctltmp = 1;
 #if _WIN32
@@ -33,3 +32,13 @@ void setSocketDefaults(SOCKET fd)
 #endif
 }
 
+uint16_t getPort(struct addrinfo* ai) {
+	switch (ai->ai_family) {
+		case AF_INET:
+			return ntohs(((struct sockaddr_in*)ai->ai_addr)->sin_port);
+		case AF_INET6:
+			return ntohs(((struct sockaddr_in6*)ai->ai_addr)->sin6_port);
+		default:
+			return 0;
+	}
+}
