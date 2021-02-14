@@ -68,7 +68,8 @@ server-options   =  "[" -? option-list -? "]"
 option-list     =  option (-? ',' -? option-list)?
 option          =  (option-timeout | option-source)
 option-timeout  =  "timeout" -? "=" -? < number >    { yy->serverTimeout = atoi(yytext); }
-option-source   =  "src"     -? "=" -? < address >   { yy->sourceAddress = strdup(yytext); }
+option-source   =  "src"     -? "=" -? < address >   { free(yy->sourceAddress);
+                                                       yy->sourceAddress = strdup(yytext); }
 
 full-port  =  port proto
 {
@@ -82,7 +83,8 @@ full-port  =  port proto
 	yy->tmpPortNum = (uint16_t)port;
 }
 
-port   = < (number | service) >   { yy->tmpPort = strdup(yytext); }
+port   = < (number | service) >   { free(yy->tmpPort);
+                                    yy->tmpPort = strdup(yytext); }
 proto  = '/tcp'                   { yy->tmpProto = protoTcp; }
        | '/udp'                   { yy->tmpProto = protoUdp; }
        | ''                       { yy->tmpProto = protoTcp; }
@@ -177,6 +179,9 @@ void parseConfiguration(char const *file)
 			"on file %s, line %d.\n", file, -1);
 		exit(1);
 	}
+	free(ctx.sourceAddress);
+	free(ctx.tmpPort);
+	yyrelease(&ctx);
 
 	fclose(in);
 
