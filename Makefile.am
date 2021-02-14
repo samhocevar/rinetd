@@ -3,7 +3,7 @@ AUTOMAKE_OPTIONS = foreign dist-bzip2
 
 SUBDIRS = src
 
-EXTRA_DIST = bootstrap COPYING CHANGES.md README.md index.html \
+EXTRA_DIST = bootstrap COPYING CHANGES.md README.md index.html rinetd.vcxproj \
 	$(man_MANS) $(sysconf_DATA)
 
 man_MANS = rinetd.8

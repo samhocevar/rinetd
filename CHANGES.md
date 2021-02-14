@@ -5,6 +5,7 @@
  * made the configuration parser more tolerant with service names that contain
    dashes (e.g. snmp-trap) or hostnames with underscores (e.g. \_http.example.com).
  * create the log file if it does not exist
+ * new Visual Studio project file
 
 ## Version 0.70
 
