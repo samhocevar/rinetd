@@ -259,7 +259,6 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 {
 	ServerInfo si = {
 		.fromHost = bindAddress,
-		.fromProtocol = bindProtocol,
 		.toHost = connectAddress,
 		.toPort = connectPort,
 		.toProtocol = connectProtocol,
@@ -649,7 +648,7 @@ static void handleAccept(ServerInfo const *srv)
 	SOCKLEN_T addrlen = sizeof(addr);
 
 	SOCKET nfd;
-	if (srv->fromProtocol == IPPROTO_TCP) {
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_TCP) {
 		/* In TCP mode, get remote address using accept(). */
 		// FIXME IPv6: need to reuse addrlen from the bind() call
 		nfd = accept(srv->fd, &addr, &addrlen);
@@ -660,7 +659,7 @@ static void handleAccept(ServerInfo const *srv)
 		}
 
 		setSocketDefaults(nfd);
-	} else /* if (srv->fromProtocol == IPPROTO_UDP) */ {
+	} else /* if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP) */ {
 		/* In UDP mode, get remote address using recvfrom() and check
 			for an existing connection from this client. We need
 			to read a lot of data otherwise the datagram contents
@@ -707,11 +706,11 @@ static void handleAccept(ServerInfo const *srv)
 	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
 	cnx->remote.fd = nfd;
-	cnx->remote.protocol = srv->fromProtocol;
+	cnx->remote.protocol = srv->fromAddrInfo->ai_protocol;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.totalBytesIn = cnx->remote.totalBytesOut = 0;
 	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
-	if (srv->fromProtocol == IPPROTO_UDP)
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP)
 		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 
 	cnx->coClosing = 0;
@@ -733,6 +732,7 @@ static void handleAccept(ServerInfo const *srv)
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	struct sockaddr_in saddr;
+	/* FIXME: don’t forget to switch to PF_INET6 for IPv6. */
 	cnx->local.fd = socket(PF_INET, getSocketType(srv->toProtocol), srv->toProtocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m\n");
@@ -788,7 +788,7 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	/* Send UDP data to the other socket */
-	if (srv->fromProtocol == IPPROTO_UDP) {
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP) {
 		handleUdpRead(cnx, globalUdpBuffer, udpBytes);
 	}
 

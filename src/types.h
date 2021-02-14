@@ -37,7 +37,7 @@ struct _server_info {
 	char *fromHost, *toHost;
 	struct addrinfo *fromAddrInfo;
 	int16_t toPort;
-	int fromProtocol, toProtocol;
+	int toProtocol;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
