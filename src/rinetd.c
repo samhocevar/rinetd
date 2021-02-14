@@ -276,6 +276,7 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 	struct addrinfo hints =
 	{
 		.ai_family = AF_UNSPEC,
+		.ai_protocol = bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP,
 		.ai_socktype = bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
 		.ai_flags = AI_PASSIVE,
 	};
@@ -287,9 +288,7 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 	}
 
 	for (struct addrinfo *it = servinfo; it; it = it->ai_next) {
-		si.fd = socket(it->ai_family,
-			bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
-			bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
+		si.fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
 		if (si.fd == INVALID_SOCKET) {
 			syslog(LOG_ERR, "couldn't create server socket! (%m)\n");
 			freeaddrinfo(servinfo);
