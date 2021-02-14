@@ -644,14 +644,13 @@ static void handleAccept(ServerInfo const *srv)
 {
 	int udpBytes = 0;
 
-	struct sockaddr addr;
+	struct sockaddr_storage addr;
 	SOCKLEN_T addrlen = sizeof(addr);
 
 	SOCKET nfd;
 	if (srv->fromAddrInfo->ai_protocol == IPPROTO_TCP) {
 		/* In TCP mode, get remote address using accept(). */
-		// FIXME IPv6: need to reuse addrlen from the bind() call
-		nfd = accept(srv->fd, &addr, &addrlen);
+		nfd = accept(srv->fd, (struct sockaddr *)&addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
 			syslog(LOG_ERR, "accept(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
@@ -666,7 +665,7 @@ static void handleAccept(ServerInfo const *srv)
 			may be lost later. */
 		nfd = srv->fd;
 		SSIZE_T ret = recvfrom(nfd, globalUdpBuffer,
-				sizeof(globalUdpBuffer), 0, &addr, &addrlen);
+				sizeof(globalUdpBuffer), 0, (struct sockaddr *)&addr, &addrlen);
 		if (ret < 0) {
 			if (GetLastError() == WSAEWOULDBLOCK) {
 				return;
