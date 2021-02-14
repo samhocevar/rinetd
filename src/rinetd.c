@@ -212,6 +212,9 @@ static void clearConfiguration(void) {
 		free(srv->fromHost);
 		free(srv->toHost);
 		freeaddrinfo(srv->fromAddrInfo);
+		if (srv->sourceAddrInfo) {
+			freeaddrinfo(srv->sourceAddrInfo);
+		}
 	}
 	/* Free memory associated with previous set. */
 	free(seInfo);
@@ -265,13 +268,6 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 		.serverTimeout = serverTimeout,
 	};
 
-	si.sourceAddr.s_addr = INADDR_ANY;
-	if (sourceAddress && getAddress(sourceAddress, &si.sourceAddr) < 0) {
-		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
-			sourceAddress);
-		exit(1);
-	}
-
 	/* Make a server socket */
 	struct addrinfo hints =
 	{
@@ -322,6 +318,21 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 
 		si.fromAddrInfo = it;
 		break;
+	}
+
+	/* Resolve source address if applicable */
+	if (sourceAddress) {
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_UNSPEC,
+		hints.ai_protocol = connectProtocol,
+		hints.ai_socktype = getSocketType(connectProtocol),
+
+		ret = getaddrinfo(sourceAddress, NULL, &hints, &servinfo);
+		if (ret != 0) {
+			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+			exit(1);
+		}
+		si.sourceAddrInfo = servinfo;
 	}
 
 	if (getAddress(connectAddress, &si.localAddr) < 0) {
@@ -745,15 +756,13 @@ static void handleAccept(ServerInfo const *srv)
 	if (srv->toProtocol == IPPROTO_TCP)
 		setSocketDefaults(cnx->local.fd);
 
-	/* Bind the local socket even if we use connect() later, so that
+	/* Bind the local socket even though we use connect() later, so that
 		we can specify a source address. */
-	memset(&saddr, 0, sizeof(struct sockaddr_in));
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &srv->sourceAddr, sizeof(struct in_addr));
-	saddr.sin_port = 0;
-	if (bind(cnx->local.fd, (struct sockaddr *)&saddr,
-		sizeof(saddr)) == SOCKET_ERROR) {
-		syslog(LOG_ERR, "bind(): %m\n");
+	if (srv->sourceAddrInfo) {
+		if (bind(cnx->local.fd, srv->sourceAddrInfo->ai_addr,
+				srv->sourceAddrInfo->ai_addrlen) == SOCKET_ERROR) {
+			syslog(LOG_ERR, "bind(): %m\n");
+		}
 	}
 
 	memset(&saddr, 0, sizeof(struct sockaddr_in));

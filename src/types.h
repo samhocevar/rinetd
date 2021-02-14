@@ -31,7 +31,7 @@ struct _server_info {
 	/* In network order, for network purposes */
 	struct in_addr localAddr;
 	uint16_t localPort;
-	struct in_addr sourceAddr;
+	struct addrinfo *sourceAddrInfo;
 
 	/* In ASCII and local byte order, for logging purposes */
 	char *fromHost, *toHost;
