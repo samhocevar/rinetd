@@ -46,7 +46,7 @@ extern FILE *logFile;
 
 /* Functions */
 
-void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
-               char *connectAddress, uint16_t connectPort, protocolType connectProto,
+void addServer(char *bindAddress, char *bindPort, int bindProtocol,
+               char *connectAddress, uint16_t connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress);
 

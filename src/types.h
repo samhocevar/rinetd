@@ -17,12 +17,6 @@ enum _rule_type {
 	denyRule,
 };
 
-typedef enum _protocol_type protocolType;
-enum _protocol_type {
-	protoTcp = 1,
-	protoUdp = 2,
-};
-
 typedef struct _rule Rule;
 struct _rule
 {
@@ -43,7 +37,7 @@ struct _server_info {
 	char *fromHost, *toHost;
 	struct addrinfo *fromAddrInfo;
 	int16_t toPort;
-	protocolType fromProto, toProto;
+	int fromProtocol, toProtocol;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
@@ -57,7 +51,7 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
-	protocolType proto;
+	int protocol;
 	/* recv: received on this socket
 		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;

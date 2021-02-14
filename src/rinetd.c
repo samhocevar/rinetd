@@ -253,16 +253,16 @@ static void readConfiguration(char const *file) {
 	}
 }
 
-void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
-               char *connectAddress, uint16_t connectPort, protocolType connectProto,
+void addServer(char *bindAddress, char *bindPort, int bindProtocol,
+               char *connectAddress, uint16_t connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress)
 {
 	ServerInfo si = {
 		.fromHost = bindAddress,
-		.fromProto = bindProto,
+		.fromProtocol = bindProtocol,
 		.toHost = connectAddress,
 		.toPort = connectPort,
-		.toProto = connectProto,
+		.toProtocol = connectProtocol,
 		.serverTimeout = serverTimeout,
 	};
 
@@ -277,8 +277,8 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 	struct addrinfo hints =
 	{
 		.ai_family = AF_UNSPEC,
-		.ai_protocol = bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP,
-		.ai_socktype = bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
+		.ai_protocol = bindProtocol,
+		.ai_socktype = bindProtocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM,
 		.ai_flags = AI_PASSIVE,
 	};
 	struct addrinfo *servinfo;
@@ -307,7 +307,7 @@ void addServer(char *bindAddress, char *bindPort, protocolType bindProto,
 			exit(1);
 		}
 
-		if (bindProto == protoTcp) {
+		if (bindProtocol == IPPROTO_TCP) {
 			if (listen(si.fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
 				/* Warn -- don't exit. */
 				syslog(LOG_ERR, "couldn't listen to address %s port %s (%m)\n",
@@ -360,7 +360,7 @@ static void setConnectionCount(int newCount)
 			closesocket(coInfo[i].local.fd);
 		}
 		if (coInfo[i].remote.fd != INVALID_SOCKET) {
-			if (coInfo[i].remote.proto == protoTcp)
+			if (coInfo[i].remote.protocol == IPPROTO_TCP)
 				closesocket(coInfo[i].remote.fd);
 		}
 		free(coInfo[i].local.buffer);
@@ -476,7 +476,7 @@ static void selectPass(void)
 			if (cnx->remote.recvPos < RINETD_BUFFER_SIZE) {
 				FD_SET_EXT(cnx->remote.fd, readfds);
 				/* For UDP connections, we need to handle timeouts */
-				if (cnx->remote.proto == protoUdp) {
+				if (cnx->remote.protocol == IPPROTO_UDP) {
 					long delay = (long)(cnx->remoteTimeout - now);
 					timeout.tv_sec = delay <= 1 ? 1
 						: (delay < timeout.tv_sec || timeout.tv_sec == 0) ? delay
@@ -496,7 +496,7 @@ static void selectPass(void)
 		if (cnx->remote.fd != INVALID_SOCKET) {
 			/* Do not read on remote UDP sockets, the server does it,
 				but handle timeouts instead. */
-			if (cnx->remote.proto == protoTcp) {
+			if (cnx->remote.protocol == IPPROTO_TCP) {
 				if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
 					handleRead(cnx, &cnx->remote, &cnx->local);
 				}
@@ -574,7 +574,7 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	if (cnx->coClosing && (socket->sentPos == other_socket->recvPos)) {
 		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, cnx->coLog);
-		if (socket->proto == protoTcp)
+		if (socket->protocol == IPPROTO_TCP)
 			closesocket(socket->fd);
 		socket->fd = INVALID_SOCKET;
 		return;
@@ -582,7 +582,7 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 
 	struct sockaddr const *addr = NULL;
 	SOCKLEN_T addrlen = 0;
-	if (socket->proto == protoUdp && socket == &cnx->remote) {
+	if (socket->protocol == IPPROTO_UDP && socket == &cnx->remote) {
 		addr = (struct sockaddr const*)&cnx->remoteAddress;
 		addrlen = (SOCKLEN_T)sizeof(cnx->remoteAddress);
 	}
@@ -610,16 +610,16 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket)
 {
 	cnx->coClosing = 1;
-	if (socket->proto == protoTcp) {
+	if (socket->protocol == IPPROTO_TCP) {
 		/* One end fizzled out, so make sure we're all done with that */
 		closesocket(socket->fd);
-	} else /* if (socket->proto == protoUdp) */ {
+	} else /* if (socket->protocol == IPPROTO_UDP) */ {
 		/* Nothing to do in UDP mode */
 	}
 	socket->fd = INVALID_SOCKET;
 
 	if (other_socket->fd != INVALID_SOCKET) {
-		if (other_socket->proto == protoTcp) {
+		if (other_socket->protocol == IPPROTO_TCP) {
 #if !defined __linux__ && !defined _WIN32
 			/* Now set up the other end for a polite closing */
 
@@ -630,7 +630,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 			setsockopt(other_socket->fd, SOL_SOCKET, SO_SNDLOWAT,
 				&arg, sizeof(arg));
 #endif
-		} else /* if (other_socket->proto == protoUdp) */ {
+		} else /* if (other_socket->protocol == IPPROTO_UDP) */ {
 			if (other_socket == &cnx->local)
 				closesocket(other_socket->fd);
 			other_socket->fd = INVALID_SOCKET;
@@ -649,7 +649,7 @@ static void handleAccept(ServerInfo const *srv)
 	SOCKLEN_T addrlen = sizeof(addr);
 
 	SOCKET nfd;
-	if (srv->fromProto == protoTcp) {
+	if (srv->fromProtocol == IPPROTO_TCP) {
 		/* In TCP mode, get remote address using accept(). */
 		// FIXME IPv6: need to reuse addrlen from the bind() call
 		nfd = accept(srv->fd, &addr, &addrlen);
@@ -660,7 +660,7 @@ static void handleAccept(ServerInfo const *srv)
 		}
 
 		setSocketDefaults(nfd);
-	} else /* if (srv->fromProto == protoUdp) */ {
+	} else /* if (srv->fromProtocol == IPPROTO_UDP) */ {
 		/* In UDP mode, get remote address using recvfrom() and check
 			for an existing connection from this client. We need
 			to read a lot of data otherwise the datagram contents
@@ -702,16 +702,16 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	cnx->local.fd = INVALID_SOCKET;
-	cnx->local.proto = srv->toProto;
+	cnx->local.protocol = srv->toProtocol;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
 	cnx->remote.fd = nfd;
-	cnx->remote.proto = srv->fromProto;
+	cnx->remote.protocol = srv->fromProtocol;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.totalBytesIn = cnx->remote.totalBytesOut = 0;
 	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
-	if (srv->fromProto == protoUdp)
+	if (srv->fromProtocol == IPPROTO_UDP)
 		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 
 	cnx->coClosing = 0;
@@ -722,7 +722,7 @@ static void handleAccept(ServerInfo const *srv)
 	if (logCode != logAllowed) {
 		/* Local fd is not open yet, so only
 			close the remote socket. */
-		if (cnx->remote.proto == protoTcp)
+		if (cnx->remote.protocol == IPPROTO_TCP)
 			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, cnx->server, logCode);
@@ -733,19 +733,19 @@ static void handleAccept(ServerInfo const *srv)
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
 	struct sockaddr_in saddr;
-	cnx->local.fd = srv->toProto == protoTcp
-		? socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)
-		: socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	cnx->local.fd = socket(PF_INET,
+		srv->toProtocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM,
+		srv->toProtocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m\n");
-		if (cnx->remote.proto == protoTcp)
+		if (cnx->remote.protocol == IPPROTO_TCP)
 			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, srv, logLocalSocketFailed);
 		return;
 	}
 
-	if (srv->toProto == protoTcp)
+	if (srv->toProtocol == IPPROTO_TCP)
 		setSocketDefaults(cnx->local.fd);
 
 	/* Bind the local socket even if we use connect() later, so that
@@ -771,7 +771,7 @@ static void handleAccept(ServerInfo const *srv)
 		{
 			PERROR("rinetd: connect");
 			closesocket(cnx->local.fd);
-			if (cnx->remote.proto == protoTcp)
+			if (cnx->remote.protocol == IPPROTO_TCP)
 				closesocket(cnx->remote.fd);
 			cnx->remote.fd = INVALID_SOCKET;
 			cnx->local.fd = INVALID_SOCKET;
@@ -781,7 +781,7 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	/* Send a zero-size UDP packet to simulate a connection */
-	if (srv->toProto == protoUdp) {
+	if (srv->toProtocol == IPPROTO_UDP) {
 		int got = sendto(cnx->local.fd, NULL, 0, 0,
 		                 (struct sockaddr const *)&saddr,
 		                 (SOCKLEN_T)sizeof(saddr));
@@ -790,7 +790,7 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	/* Send UDP data to the other socket */
-	if (srv->fromProto == protoUdp) {
+	if (srv->fromProtocol == IPPROTO_UDP) {
 		handleUdpRead(cnx, globalUdpBuffer, udpBytes);
 	}
 

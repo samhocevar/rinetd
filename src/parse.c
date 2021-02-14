@@ -493,7 +493,7 @@ YY_ACTION(void) yy_3_proto(yycontext *yy, char *yytext, int yyleng)
   yyprintf((stderr, "do yy_3_proto\n"));
   {
 #line 88
-   yy->tmpProto = protoTcp; ;
+   yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
 #undef yypos
@@ -507,7 +507,7 @@ YY_ACTION(void) yy_2_proto(yycontext *yy, char *yytext, int yyleng)
   yyprintf((stderr, "do yy_2_proto\n"));
   {
 #line 87
-   yy->tmpProto = protoUdp; ;
+   yy->tmpProto = IPPROTO_UDP; ;
   }
 #undef yythunkpos
 #undef yypos
@@ -521,7 +521,7 @@ YY_ACTION(void) yy_1_proto(yycontext *yy, char *yytext, int yyleng)
   yyprintf((stderr, "do yy_1_proto\n"));
   {
 #line 86
-   yy->tmpProto = protoTcp; ;
+   yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
 #undef yypos
@@ -550,7 +550,7 @@ YY_ACTION(void) yy_1_full_port(yycontext *yy, char *yytext, int yyleng)
   {
 #line 74
   
-	char const *proto = yy->tmpProto == protoTcp ? "tcp" : "udp";
+	char const *proto = yy->tmpProto == IPPROTO_TCP ? "tcp" : "udp";
 	struct servent *service = getservbyname(yy->tmpPort, proto);
 	int port = service ? ntohs(service->s_port) : atoi(yy->tmpPort);
 	if (port <= 0 || port >= 65536) {
