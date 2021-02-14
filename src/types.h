@@ -46,7 +46,7 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
-	int protocol;
+	int family, protocol;
 	/* recv: received on this socket
 		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;
@@ -58,7 +58,7 @@ typedef struct _connection_info ConnectionInfo;
 struct _connection_info
 {
 	Socket remote, local;
-	struct sockaddr_in remoteAddress;
+	struct sockaddr_storage remoteAddress;
 	time_t remoteTimeout;
 	int coClosing;
 	int coLog;

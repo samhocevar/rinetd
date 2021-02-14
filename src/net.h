@@ -82,4 +82,5 @@ static inline int GetLastError(void) {
 
 void setSocketDefaults(SOCKET fd);
 int getSocketType(int protocol);
+int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b);
 uint16_t getPort(struct addrinfo* ai);

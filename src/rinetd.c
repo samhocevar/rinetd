@@ -697,13 +697,10 @@ static void handleAccept(ServerInfo const *srv)
 
 		udpBytes = (int)ret;
 
+		/* Look for an existing connection with the same remote host and port. */
 		for (int i = 0; i < coTotal; ++i) {
 			ConnectionInfo *cnx = &coInfo[i];
-			struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
-			if (cnx->remote.fd == nfd
-				&& cnx->remoteAddress.sin_family == addr_in->sin_family
-				&& cnx->remoteAddress.sin_port == addr_in->sin_port
-				&& cnx->remoteAddress.sin_addr.s_addr == addr_in->sin_addr.s_addr) {
+			if (cnx->remote.fd == nfd && sameSocketAddress(&cnx->remoteAddress, &addr)) {
 				cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 				handleUdpRead(cnx, globalUdpBuffer, udpBytes);
 				return;
@@ -717,15 +714,17 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	cnx->local.fd = INVALID_SOCKET;
+	cnx->local.family = srv->toAddrInfo->ai_family;
 	cnx->local.protocol = srv->toAddrInfo->ai_protocol;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
 	cnx->remote.fd = nfd;
+	cnx->remote.family = srv->fromAddrInfo->ai_family;
 	cnx->remote.protocol = srv->fromAddrInfo->ai_protocol;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.totalBytesIn = cnx->remote.totalBytesOut = 0;
-	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
+	cnx->remoteAddress = addr;
 	if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP)
 		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 
@@ -815,7 +814,10 @@ static void handleAccept(ServerInfo const *srv)
 static int checkConnectionAllowed(ConnectionInfo const *cnx)
 {
 	ServerInfo const *srv = cnx->server;
-	char const *addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
+
+	char addressText[NI_MAXHOST];
+	getnameinfo((struct sockaddr *)&cnx->remoteAddress, sizeof(cnx->remoteAddress),
+		addressText, sizeof(addressText), NULL, 0, NI_NUMERICHOST);
 
 	/* 1. Check global allow rules. If there are no
 		global allow rules, it's presumed OK at
@@ -938,6 +940,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 		thanks folks */
 	int timz;
 	char tstr[1024];
+	char addressText[NI_MAXHOST] = { '?' };
 	struct tm *t = get_gmtoff(&timz);
 	char sign = (timz < 0 ? '-' : '+');
 	if (timz < 0) {
@@ -945,10 +948,10 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	}
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 
-	char const *addressText = "?";
 	int64_t bytesOut = 0, bytesIn = 0;
 	if (cnx != NULL) {
-		addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
+		getnameinfo((struct sockaddr *)&cnx->remoteAddress, sizeof(cnx->remoteAddress),
+			addressText, sizeof(addressText), NULL, 0, NI_NUMERICHOST);
 		bytesOut = cnx->remote.totalBytesOut;
 		bytesIn = cnx->remote.totalBytesIn;
 	}
