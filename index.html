@@ -79,7 +79,7 @@ p.roffit {
 <p class="level0">Ports default to TCP. To specify the protocol, append <span Class="emphasis">/udp</span> or <span Class="emphasis">/tcp</span> to the port number: 
 <p class="level0"><span Class="bold">    206.125.69.81 80/tcp  10.1.1.2 8000/udp</span> 
 <p class="level0">Service names can be specified instead of port numbers. On most systems, service names are defined in the file <span Class="emphasis">/etc/services</span>. 
-<p class="level0">Both IP addresses and hostnames are accepted for bindaddress and connectaddress. 
+<p class="level0">Both IP addresses and hostnames are accepted for bindaddress and connectaddress, including IPv6. 
 <p class="level0">
 <p class="level0"><a name="UDP"></a><h2 class="nroffsh">UDP timeout option</h2>
 <p class="level0">Since UDP is a connectionless protocol, a timeout is necessary or forwarding connections may accumulate with time and exhaust resources. By default, if no data is sent or received on a UDP connection for 72 seconds, the other connection is closed. This value can be changed using the <span Class="emphasis">timeout</span> option: 
@@ -87,8 +87,8 @@ p.roffit {
 <p class="level0">This rule will forward all data received on UDP port 8000 to host 10.1.1.2 on TCP port 80, and will close the connection after no data is received on the UDP port for 3600 seconds. 
 <p class="level0"><a name="Source"></a><h2 class="nroffsh">Source address option</h2>
 <p class="level0">A forwarding rule option allows to bind to a specific local address when sending data to the other end. This is done using the <span Class="emphasis">src</span> option: 
-<p class="level0"><span Class="bold">    192.168.1.1 80  10.1.1.2 80  [src=192.168.1.2]</span> 
-<p class="level0">Assuming the local host has two IP addresses, 192.168.1.1 and 192.168.1.2, this rule ensures that forwarded packets are sent using source address 192.168.1.2. 
+<p class="level0"><span Class="bold">    192.168.1.1 80  10.1.1.127 80  [src=10.1.1.2]</span> 
+<p class="level0">Assuming the local host has two IP addresses, 10.1.1.1 and 10.1.1.2, this rule ensures that forwarded packets are sent using source address 10.1.1.2. 
 <p class="level0"><a name="ALLOW"></a><h2 class="nroffsh">ALLOW AND DENY RULES</h2>
 <p class="level0">Configuration files can also contain allow and deny rules. 
 <p class="level0">Allow rules which appear before the first forwarding rule are applied globally: if at least one global allow rule exists, and the address of a new connection does not satisfy at least one of the global allow rules, that connection is immediately rejected, regardless of any other rules. 
@@ -130,7 +130,7 @@ p.roffit {
 <p class="level0">The server redirected to is not able to identify the host the client really came from. This cannot be corrected; however, the log produced by <span Class="bold">rinetd</span> provides a way to obtain this information. Under Unix, Sockets would theoretically lose data when closed with SO_LINGER turned off, but in Linux this is not the case (kernel source comments support this belief on my part). On non-Linux Unix platforms, alternate code which uses a different trick to work around blocking close() is provided, but this code is untested. 
 <p class="level0">The logging is inadequate. The duration of each connection should be logged. <a name="LICENSE"></a><h2 class="nroffsh">LICENSE</h2>
 <p class="level0">Copyright (c) 1997, 1998, 1999, Thomas Boutell and Boutell.Com, Inc. 
-<p class="level0">Copyright (c) 2003-2017 Sam Hocevar 
+<p class="level0">Copyright (c) 2003-2021 Sam Hocevar 
 <p class="level0">This software is released for free use under the terms of the GNU General Public License, version 2 or higher. NO WARRANTY IS EXPRESSED OR IMPLIED. USE THIS SOFTWARE AT YOUR OWN RISK. <a name="CONTACT"></a><h2 class="nroffsh">CONTACT INFORMATION</h2>
 <p class="level0">See https://github.com/samhocevar/rinetd/releases for the latest release. 
 <p class="level0">Thomas Boutell can be reached by email: boutell@boutell.com 

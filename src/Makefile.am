@@ -14,10 +14,6 @@ BUILT_SOURCES = parse.c
 parse.c: parse.peg
 	if which leg >/dev/null 2>&1; then leg -o $@ $^; else touch $@; fi
 
-# If roffit is available, regenerate index.html
-index.html: rinetd.8
-	if which roffit >/dev/null 2>&1; then roffit < $^ > $@; else touch $@; fi
-
 # _POSIX_C_SOURCE is for SA_RESTART and others
 # _XOPEN_SOURCE is for struct sigaction
 # _GNU_SOURCE is for h_errno and gethostbyname-related macros
