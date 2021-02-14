@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2019 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -17,12 +17,6 @@ enum _rule_type {
 	denyRule,
 };
 
-typedef enum _protocol_type protocolType;
-enum _protocol_type {
-	protoTcp = 1,
-	protoUdp = 2,
-};
-
 typedef struct _rule Rule;
 struct _rule
 {
@@ -35,14 +29,10 @@ struct _server_info {
 	SOCKET fd;
 
 	/* In network order, for network purposes */
-	struct in_addr localAddr;
-	uint16_t localPort;
-	struct in_addr sourceAddr;
+	struct addrinfo *fromAddrInfo, *toAddrInfo, *sourceAddrInfo;
 
-	/* In ASCII and local byte order, for logging purposes */
+	/* In ASCII, for logging purposes */
 	char *fromHost, *toHost;
-	int16_t fromPort, toPort;
-	protocolType fromProto, toProto;
 
 	/* Offset and count into list of allow and deny rules. Any rules
 		prior to globalAllowRules and globalDenyRules are global rules. */
@@ -56,7 +46,7 @@ typedef struct _socket Socket;
 struct _socket
 {
 	SOCKET fd;
-	protocolType proto;
+	int family, protocol;
 	/* recv: received on this socket
 		sent: sent through this socket from the other buffer */
 	int recvPos, sentPos;
@@ -68,7 +58,7 @@ typedef struct _connection_info ConnectionInfo;
 struct _connection_info
 {
 	Socket remote, local;
-	struct sockaddr_in remoteAddress;
+	struct sockaddr_storage remoteAddress;
 	time_t remoteTimeout;
 	int coClosing;
 	int coLog;

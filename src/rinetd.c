@@ -80,7 +80,7 @@ int logFormatCommon = 0;
 FILE *logFile = NULL;
 
 char const *logMessages[] = {
-        "unknown-error",
+	"unknown-error",
 	"done-local-closed",
 	"done-remote-closed",
 	"accept-failed -",
@@ -119,7 +119,6 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleAccept(ServerInfo const *srv);
 static ConnectionInfo *findAvailableConnection(void);
 static void setConnectionCount(int newCount);
-static int getAddress(char const *host, struct in_addr *iaddr);
 static int checkConnectionAllowed(ConnectionInfo const *cnx);
 
 static int readArgs (int argc, char **argv, RinetdOptions *options);
@@ -211,6 +210,11 @@ static void clearConfiguration(void) {
 		}
 		free(srv->fromHost);
 		free(srv->toHost);
+		freeaddrinfo(srv->fromAddrInfo);
+		freeaddrinfo(srv->toAddrInfo);
+		if (srv->sourceAddrInfo) {
+			freeaddrinfo(srv->sourceAddrInfo);
+		}
 	}
 	/* Free memory associated with previous set. */
 	free(seInfo);
@@ -252,101 +256,112 @@ static void readConfiguration(char const *file) {
 	}
 }
 
-void addServer(char *bindAddress, uint16_t bindPort, protocolType bindProto,
-               char *connectAddress, uint16_t connectPort, protocolType connectProto,
+void addServer(char *bindAddress, char *bindPort, int bindProtocol,
+               char *connectAddress, char *connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress)
 {
-	/* Turn all of this stuff into reasonable addresses */
-	struct in_addr iaddr;
-	if (getAddress(bindAddress, &iaddr) < 0) {
-		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
-			bindAddress);
-		exit(1);
-	}
-	struct in_addr isourceaddr;
-	isourceaddr.s_addr = INADDR_ANY;
-	if (sourceAddress && getAddress(sourceAddress, &isourceaddr) < 0) {
-		fprintf(stderr, "rinetd: host %s could not be resolved.\n",
-			sourceAddress);
-		exit(1);
-	}
+	ServerInfo si = {
+		.fromHost = bindAddress,
+		.toHost = connectAddress,
+		.serverTimeout = serverTimeout,
+	};
+
 	/* Make a server socket */
-	SOCKET fd = socket(PF_INET,
-	                   bindProto == protoTcp ? SOCK_STREAM : SOCK_DGRAM,
-	                   bindProto == protoTcp ? IPPROTO_TCP : IPPROTO_UDP);
-	if (fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "couldn't create "
-			"server socket! (%m)\n");
-		exit(1);
-	}
-	struct sockaddr_in saddr;
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &iaddr, sizeof(iaddr));
-	saddr.sin_port = htons(bindPort);
-	int tmp = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
-		(const char *) &tmp, sizeof(tmp));
-	if (bind(fd, (struct sockaddr *)
-		&saddr, sizeof(saddr)) == SOCKET_ERROR) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "couldn't bind to "
-			"address %s port %d (%m)\n",
-			bindAddress, (int)bindPort);
-		closesocket(fd);
+	struct addrinfo hints =
+	{
+		.ai_family = AF_UNSPEC,
+		.ai_protocol = bindProtocol,
+		.ai_socktype = getSocketType(bindProtocol),
+		.ai_flags = AI_PASSIVE,
+	};
+	struct addrinfo *servinfo;
+	int ret = getaddrinfo(bindAddress, bindPort, &hints, &servinfo);
+	if (ret != 0) {
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
 		exit(1);
 	}
 
-	if (bindProto == protoTcp) {
-		if (listen(fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
-			/* Warn -- don't exit. */
-			syslog(LOG_ERR, "couldn't listen to "
-				"address %s port %d (%m)\n",
-				bindAddress, (int)bindPort);
-			closesocket(fd);
+	for (struct addrinfo *it = servinfo; it; it = it->ai_next) {
+		si.fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+		if (si.fd == INVALID_SOCKET) {
+			syslog(LOG_ERR, "couldn't create server socket! (%m)\n");
+			freeaddrinfo(servinfo);
+			exit(1);
 		}
 
-		/* Make socket nonblocking in TCP mode only, otherwise
-			we may miss some data. */
-		setSocketDefaults(fd);
+		int tmp = 1;
+		setsockopt(si.fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&tmp, sizeof(tmp));
+
+		if (bind(si.fd, it->ai_addr, it->ai_addrlen) == SOCKET_ERROR) {
+			syslog(LOG_ERR, "couldn't bind to address %s port %s (%m)\n",
+				bindAddress, bindPort);
+			closesocket(si.fd);
+			freeaddrinfo(servinfo);
+			exit(1);
+		}
+
+		if (bindProtocol == IPPROTO_TCP) {
+			if (listen(si.fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
+				/* Warn -- don't exit. */
+				syslog(LOG_ERR, "couldn't listen to address %s port %s (%m)\n",
+					bindAddress, bindPort);
+				/* XXX: check whether this is correct */
+				closesocket(si.fd);
+			}
+
+			/* Make socket nonblocking in TCP mode only, otherwise
+				we may miss some data. */
+			setSocketDefaults(si.fd);
+		}
+
+		si.fromAddrInfo = it;
+		break;
 	}
 
-	if (getAddress(connectAddress, &iaddr) < 0) {
-		/* Warn -- don't exit. */
-		syslog(LOG_ERR, "host %s could not be resolved.\n",
-			bindAddress);
-		closesocket(fd);
+	/* Resolve destination address. */
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_protocol = connectProtocol;
+	hints.ai_socktype = getSocketType(connectProtocol);
+	hints.ai_flags = AI_PASSIVE;
+	ret = getaddrinfo(connectAddress, connectPort, &hints, &servinfo);
+	if (ret != 0) {
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+		freeaddrinfo(si.fromAddrInfo);
+		closesocket(si.fd);
 		exit(1);
 	}
+	si.toAddrInfo = servinfo;
+
+	/* Resolve source address if applicable. */
+	if (sourceAddress) {
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_UNSPEC,
+		hints.ai_protocol = connectProtocol,
+		hints.ai_socktype = getSocketType(connectProtocol),
+
+		ret = getaddrinfo(sourceAddress, NULL, &hints, &servinfo);
+		if (ret != 0) {
+			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+			freeaddrinfo(si.fromAddrInfo);
+			freeaddrinfo(si.toAddrInfo);
+			exit(1);
+		}
+		si.sourceAddrInfo = servinfo;
+	}
+
+#ifndef _WIN32
+	if (si.fd > maxfd) {
+		maxfd = si.fd;
+	}
+#endif
+
 	/* Allocate server info */
-	seInfo = (ServerInfo *)
-		realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
+	seInfo = (ServerInfo *)realloc(seInfo, sizeof(ServerInfo) * (seTotal + 1));
 	if (!seInfo) {
 		exit(1);
 	}
-	ServerInfo *srv = &seInfo[seTotal];
-	memset(srv, 0, sizeof(*srv));
-	srv->fd = fd;
-	srv->localAddr = iaddr;
-	srv->localPort = htons(connectPort);
-	srv->fromHost = bindAddress;
-	if (!srv->fromHost) {
-		exit(1);
-	}
-	srv->fromPort = bindPort;
-	srv->fromProto = bindProto;
-	srv->sourceAddr = isourceaddr;
-	srv->toHost = connectAddress;
-	if (!srv->toHost) {
-		exit(1);
-	}
-	srv->toPort = connectPort;
-	srv->toProto = connectProto;
-	srv->serverTimeout = serverTimeout;
-#ifndef _WIN32
-	if (fd > maxfd) {
-		maxfd = fd;
-	}
-#endif
+	seInfo[seTotal] = si;
 	++seTotal;
 }
 
@@ -361,7 +376,7 @@ static void setConnectionCount(int newCount)
 			closesocket(coInfo[i].local.fd);
 		}
 		if (coInfo[i].remote.fd != INVALID_SOCKET) {
-			if (coInfo[i].remote.proto == protoTcp)
+			if (coInfo[i].remote.protocol == IPPROTO_TCP)
 				closesocket(coInfo[i].remote.fd);
 		}
 		free(coInfo[i].local.buffer);
@@ -477,7 +492,7 @@ static void selectPass(void)
 			if (cnx->remote.recvPos < RINETD_BUFFER_SIZE) {
 				FD_SET_EXT(cnx->remote.fd, readfds);
 				/* For UDP connections, we need to handle timeouts */
-				if (cnx->remote.proto == protoUdp) {
+				if (cnx->remote.protocol == IPPROTO_UDP) {
 					long delay = (long)(cnx->remoteTimeout - now);
 					timeout.tv_sec = delay <= 1 ? 1
 						: (delay < timeout.tv_sec || timeout.tv_sec == 0) ? delay
@@ -497,7 +512,7 @@ static void selectPass(void)
 		if (cnx->remote.fd != INVALID_SOCKET) {
 			/* Do not read on remote UDP sockets, the server does it,
 				but handle timeouts instead. */
-			if (cnx->remote.proto == protoTcp) {
+			if (cnx->remote.protocol == IPPROTO_TCP) {
 				if (FD_ISSET_EXT(cnx->remote.fd, readfds)) {
 					handleRead(cnx, &cnx->remote, &cnx->local);
 				}
@@ -575,7 +590,7 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 	if (cnx->coClosing && (socket->sentPos == other_socket->recvPos)) {
 		PERROR("rinetd: local closed and no more output");
 		logEvent(cnx, cnx->server, cnx->coLog);
-		if (socket->proto == protoTcp)
+		if (socket->protocol == IPPROTO_TCP)
 			closesocket(socket->fd);
 		socket->fd = INVALID_SOCKET;
 		return;
@@ -583,7 +598,7 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 
 	struct sockaddr const *addr = NULL;
 	SOCKLEN_T addrlen = 0;
-	if (socket->proto == protoUdp && socket == &cnx->remote) {
+	if (socket->protocol == IPPROTO_UDP && socket == &cnx->remote) {
 		addr = (struct sockaddr const*)&cnx->remoteAddress;
 		addrlen = (SOCKLEN_T)sizeof(cnx->remoteAddress);
 	}
@@ -611,16 +626,16 @@ static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socket)
 {
 	cnx->coClosing = 1;
-	if (socket->proto == protoTcp) {
+	if (socket->protocol == IPPROTO_TCP) {
 		/* One end fizzled out, so make sure we're all done with that */
 		closesocket(socket->fd);
-	} else /* if (socket->proto == protoUdp) */ {
+	} else /* if (socket->protocol == IPPROTO_UDP) */ {
 		/* Nothing to do in UDP mode */
 	}
 	socket->fd = INVALID_SOCKET;
 
 	if (other_socket->fd != INVALID_SOCKET) {
-		if (other_socket->proto == protoTcp) {
+		if (other_socket->protocol == IPPROTO_TCP) {
 #if !defined __linux__ && !defined _WIN32
 			/* Now set up the other end for a polite closing */
 
@@ -631,7 +646,7 @@ static void handleClose(ConnectionInfo *cnx, Socket *socket, Socket *other_socke
 			setsockopt(other_socket->fd, SOL_SOCKET, SO_SNDLOWAT,
 				&arg, sizeof(arg));
 #endif
-		} else /* if (other_socket->proto == protoUdp) */ {
+		} else /* if (other_socket->protocol == IPPROTO_UDP) */ {
 			if (other_socket == &cnx->local)
 				closesocket(other_socket->fd);
 			other_socket->fd = INVALID_SOCKET;
@@ -646,13 +661,13 @@ static void handleAccept(ServerInfo const *srv)
 {
 	int udpBytes = 0;
 
-	struct sockaddr addr;
+	struct sockaddr_storage addr;
 	SOCKLEN_T addrlen = sizeof(addr);
 
 	SOCKET nfd;
-	if (srv->fromProto == protoTcp) {
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_TCP) {
 		/* In TCP mode, get remote address using accept(). */
-		nfd = accept(srv->fd, &addr, &addrlen);
+		nfd = accept(srv->fd, (struct sockaddr *)&addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
 			syslog(LOG_ERR, "accept(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
@@ -660,14 +675,14 @@ static void handleAccept(ServerInfo const *srv)
 		}
 
 		setSocketDefaults(nfd);
-	} else /* if (srv->fromProto == protoUdp) */ {
+	} else /* if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP) */ {
 		/* In UDP mode, get remote address using recvfrom() and check
 			for an existing connection from this client. We need
 			to read a lot of data otherwise the datagram contents
 			may be lost later. */
 		nfd = srv->fd;
 		SSIZE_T ret = recvfrom(nfd, globalUdpBuffer,
-				sizeof(globalUdpBuffer), 0, &addr, &addrlen);
+				sizeof(globalUdpBuffer), 0, (struct sockaddr *)&addr, &addrlen);
 		if (ret < 0) {
 			if (GetLastError() == WSAEWOULDBLOCK) {
 				return;
@@ -682,13 +697,10 @@ static void handleAccept(ServerInfo const *srv)
 
 		udpBytes = (int)ret;
 
+		/* Look for an existing connection with the same remote host and port. */
 		for (int i = 0; i < coTotal; ++i) {
 			ConnectionInfo *cnx = &coInfo[i];
-			struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
-			if (cnx->remote.fd == nfd
-				&& cnx->remoteAddress.sin_family == addr_in->sin_family
-				&& cnx->remoteAddress.sin_port == addr_in->sin_port
-				&& cnx->remoteAddress.sin_addr.s_addr == addr_in->sin_addr.s_addr) {
+			if (cnx->remote.fd == nfd && sameSocketAddress(&cnx->remoteAddress, &addr)) {
 				cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 				handleUdpRead(cnx, globalUdpBuffer, udpBytes);
 				return;
@@ -702,16 +714,18 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	cnx->local.fd = INVALID_SOCKET;
-	cnx->local.proto = srv->toProto;
+	cnx->local.family = srv->toAddrInfo->ai_family;
+	cnx->local.protocol = srv->toAddrInfo->ai_protocol;
 	cnx->local.recvPos = cnx->local.sentPos = 0;
 	cnx->local.totalBytesIn = cnx->local.totalBytesOut = 0;
 
 	cnx->remote.fd = nfd;
-	cnx->remote.proto = srv->fromProto;
+	cnx->remote.family = srv->fromAddrInfo->ai_family;
+	cnx->remote.protocol = srv->fromAddrInfo->ai_protocol;
 	cnx->remote.recvPos = cnx->remote.sentPos = 0;
 	cnx->remote.totalBytesIn = cnx->remote.totalBytesOut = 0;
-	cnx->remoteAddress = *(struct sockaddr_in *)&addr;
-	if (srv->fromProto == protoUdp)
+	cnx->remoteAddress = addr;
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP)
 		cnx->remoteTimeout = time(NULL) + srv->serverTimeout;
 
 	cnx->coClosing = 0;
@@ -722,7 +736,7 @@ static void handleAccept(ServerInfo const *srv)
 	if (logCode != logAllowed) {
 		/* Local fd is not open yet, so only
 			close the remote socket. */
-		if (cnx->remote.proto == protoTcp)
+		if (cnx->remote.protocol == IPPROTO_TCP)
 			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, cnx->server, logCode);
@@ -732,46 +746,38 @@ static void handleAccept(ServerInfo const *srv)
 	/* Now open a connection to the local server.
 		This, too, is nonblocking. Why wait
 		for anything when you don't have to? */
-	struct sockaddr_in saddr;
-	cnx->local.fd = srv->toProto == protoTcp
-		? socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)
-		: socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	struct addrinfo* to = srv->toAddrInfo;
+	cnx->local.fd = socket(to->ai_family, to->ai_socktype, to->ai_protocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
 		syslog(LOG_ERR, "socket(): %m\n");
-		if (cnx->remote.proto == protoTcp)
+		if (cnx->remote.protocol == IPPROTO_TCP)
 			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
 		logEvent(cnx, srv, logLocalSocketFailed);
 		return;
 	}
 
-	if (srv->toProto == protoTcp)
+	if (srv->toAddrInfo->ai_protocol == IPPROTO_TCP)
 		setSocketDefaults(cnx->local.fd);
 
-	/* Bind the local socket even if we use connect() later, so that
+	/* Bind the local socket even though we use connect() later, so that
 		we can specify a source address. */
-	memset(&saddr, 0, sizeof(struct sockaddr_in));
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &srv->sourceAddr, sizeof(struct in_addr));
-	saddr.sin_port = 0;
-	if (bind(cnx->local.fd, (struct sockaddr *)&saddr,
-		sizeof(saddr)) == SOCKET_ERROR) {
-		syslog(LOG_ERR, "bind(): %m\n");
+	if (srv->sourceAddrInfo) {
+		if (bind(cnx->local.fd, srv->sourceAddrInfo->ai_addr,
+				srv->sourceAddrInfo->ai_addrlen) == SOCKET_ERROR) {
+			syslog(LOG_ERR, "bind(): %m\n");
+		}
 	}
 
-	memset(&saddr, 0, sizeof(struct sockaddr_in));
-	saddr.sin_family = AF_INET;
-	memcpy(&saddr.sin_addr, &srv->localAddr, sizeof(struct in_addr));
-	saddr.sin_port = srv->localPort;
-	if (connect(cnx->local.fd, (struct sockaddr *)&saddr,
-		sizeof(struct sockaddr_in)) == SOCKET_ERROR)
+	if (connect(cnx->local.fd, srv->toAddrInfo->ai_addr,
+			srv->toAddrInfo->ai_addrlen) == SOCKET_ERROR)
 	{
 		if ((GetLastError() != WSAEINPROGRESS) &&
 			(GetLastError() != WSAEWOULDBLOCK))
 		{
 			PERROR("rinetd: connect");
 			closesocket(cnx->local.fd);
-			if (cnx->remote.proto == protoTcp)
+			if (cnx->remote.protocol == IPPROTO_TCP)
 				closesocket(cnx->remote.fd);
 			cnx->remote.fd = INVALID_SOCKET;
 			cnx->local.fd = INVALID_SOCKET;
@@ -781,16 +787,15 @@ static void handleAccept(ServerInfo const *srv)
 	}
 
 	/* Send a zero-size UDP packet to simulate a connection */
-	if (srv->toProto == protoUdp) {
+	if (srv->toAddrInfo->ai_protocol == IPPROTO_UDP) {
 		int got = sendto(cnx->local.fd, NULL, 0, 0,
-		                 (struct sockaddr const *)&saddr,
-		                 (SOCKLEN_T)sizeof(saddr));
+			srv->toAddrInfo->ai_addr, srv->toAddrInfo->ai_addrlen);
 		/* FIXME: we ignore errors here... is it safe? */
 		(void)got;
 	}
 
 	/* Send UDP data to the other socket */
-	if (srv->fromProto == protoUdp) {
+	if (srv->fromAddrInfo->ai_protocol == IPPROTO_UDP) {
 		handleUdpRead(cnx, globalUdpBuffer, udpBytes);
 	}
 
@@ -809,7 +814,10 @@ static void handleAccept(ServerInfo const *srv)
 static int checkConnectionAllowed(ConnectionInfo const *cnx)
 {
 	ServerInfo const *srv = cnx->server;
-	char const *addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
+
+	char addressText[NI_MAXHOST];
+	getnameinfo((struct sockaddr *)&cnx->remoteAddress, sizeof(cnx->remoteAddress),
+		addressText, sizeof(addressText), NULL, 0, NI_NUMERICHOST);
 
 	/* 1. Check global allow rules. If there are no
 		global allow rules, it's presumed OK at
@@ -863,56 +871,6 @@ static int checkConnectionAllowed(ConnectionInfo const *cnx)
 	}
 
 	return logAllowed;
-}
-
-static int getAddress(char const *host, struct in_addr *iaddr)
-{
-	/* If this is an IP address, use inet_addr() */
-	int is_ipaddr = 1;
-	for (char const *p = host; *p; ++p) {
-		if (!isdigit(*p) && *p != '.') {
-			is_ipaddr = 0;
-			break;
-		}
-	}
-	if (is_ipaddr) {
-		iaddr->s_addr = inet_addr(host);
-		return 0;
-	}
-
-	/* Otherwise, use gethostbyname() */
-	struct hostent *h = gethostbyname(host);
-	if (h) {
-#ifdef h_addr
-		memcpy(&iaddr->s_addr, h->h_addr, 4);
-#else
-		memcpy(&iaddr->s_addr, h->h_addr_list[0], 4);
-#endif
-		return 0;
-	}
-
-	char const *msg = "(unknown DNS error)";
-	switch (h_errno)
-	{
-	case HOST_NOT_FOUND:
-		msg = "The specified host is unknown.";
-		break;
-#ifdef NO_DATA
-	case NO_DATA:
-#else
-	case NO_ADDRESS:
-#endif
-		msg = "The requested name is valid but does not have an IP address.";
-		break;
-	case NO_RECOVERY:
-		msg = "A non-recoverable name server error occurred.";
-		break;
-	case TRY_AGAIN:
-		msg = "A temporary error occurred on an authoritative name server.  Try again later.";
-		break;
-	}
-	syslog(LOG_ERR, "While resolving `%s' got: %s\n", host, msg);
-	return -1;
 }
 
 #if !HAVE_SIGACTION && !_WIN32
@@ -982,6 +940,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 		thanks folks */
 	int timz;
 	char tstr[1024];
+	char addressText[NI_MAXHOST] = { '?' };
 	struct tm *t = get_gmtoff(&timz);
 	char sign = (timz < 0 ? '-' : '+');
 	if (timz < 0) {
@@ -989,10 +948,10 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	}
 	strftime(tstr, sizeof(tstr), "%d/%b/%Y:%H:%M:%S ", t);
 
-	char const *addressText = "?";
 	int64_t bytesOut = 0, bytesIn = 0;
 	if (cnx != NULL) {
-		addressText = inet_ntoa(cnx->remoteAddress.sin_addr);
+		getnameinfo((struct sockaddr *)&cnx->remoteAddress, sizeof(cnx->remoteAddress),
+			addressText, sizeof(addressText), NULL, 0, NI_NUMERICHOST);
 		bytesOut = cnx->remote.totalBytesOut;
 		bytesIn = cnx->remote.totalBytesIn;
 	}
@@ -1001,9 +960,9 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	uint16_t fromPort = 0, toPort = 0;
 	if (srv != NULL) {
 		fromHost = srv->fromHost;
-		fromPort = srv->fromPort;
+		fromPort = getPort(srv->fromAddrInfo);
 		toHost = srv->toHost;
-		toPort = srv->toPort;
+		toPort = getPort(srv->toAddrInfo);
 	}
 
 	if (result==logNotAllowed || result==logDenied)

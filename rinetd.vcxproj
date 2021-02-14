@@ -33,6 +33,9 @@
     <ClInclude Include="src\rinetd.h" />
     <ClInclude Include="src\types.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="src\parse.peg" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{3F1D9D58-3205-48E9-9C93-557291A45D74}</ProjectGuid>

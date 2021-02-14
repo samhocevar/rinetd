@@ -1,6 +1,6 @@
 /* Copyright © 1997—1999 Thomas Boutell <boutell@boutell.com>
                          and Boutell.Com, Inc.
-             © 2003—2017 Sam Hocevar <sam@hocevar.net>
+             © 2003—2021 Sam Hocevar <sam@hocevar.net>
 
    This software is released for free use under the terms of
    the GNU Public License, version 2 or higher. NO WARRANTY
@@ -12,8 +12,7 @@
 
 #include "net.h"
 
-void setSocketDefaults(SOCKET fd)
-{
+void setSocketDefaults(SOCKET fd) {
 	/* Make socket non-blocking (FIXME: this uses legacy API) */
 	FIONBIO_ARG_T ioctltmp = 1;
 #if _WIN32
@@ -33,3 +32,38 @@ void setSocketDefaults(SOCKET fd)
 #endif
 }
 
+int getSocketType(int protocol) {
+	return protocol == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
+}
+
+int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b) {
+	if (a->ss_family != b->ss_family)
+		return 0;
+
+	switch (a->ss_family) {
+		case AF_INET: {
+			struct sockaddr_in *a4 = (struct sockaddr_in *)a;
+			struct sockaddr_in *b4 = (struct sockaddr_in *)b;
+			return a4->sin_port == b4->sin_port
+				&& a4->sin_addr.s_addr == b4->sin_addr.s_addr;
+		}
+		case AF_INET6: {
+			struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)a;
+			struct sockaddr_in6 *b6 = (struct sockaddr_in6 *)b;
+			return a6->sin6_port == b6->sin6_port
+				&& a6->sin6_addr.s6_addr == b6->sin6_addr.s6_addr;
+		}
+	}
+	return 0;
+}
+
+uint16_t getPort(struct addrinfo* ai) {
+	switch (ai->ai_family) {
+		case AF_INET:
+			return ntohs(((struct sockaddr_in*)ai->ai_addr)->sin_port);
+		case AF_INET6:
+			return ntohs(((struct sockaddr_in6*)ai->ai_addr)->sin6_port);
+		default:
+			return 0;
+	}
+}

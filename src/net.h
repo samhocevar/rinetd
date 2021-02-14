@@ -12,6 +12,8 @@
 	/* Define this to a reasonably large value */
 #	define FD_SETSIZE 4096
 #	include <winsock2.h>
+#	include <ws2ipdef.h>
+#	include <ws2tcpip.h>
 #	include <windows.h>
 #else
 #	include <sys/types.h>
@@ -21,6 +23,8 @@
 #	include <netinet/in.h>
 #	include <arpa/inet.h>
 #endif
+
+#include <stdint.h>
 
 #if defined HAVE_ERRNO_H
 #	include <errno.h>
@@ -59,6 +63,10 @@
 #	ifndef WSAEAGAIN
 #		define WSAEAGAIN WSAEWOULDBLOCK
 #	endif
+#	ifdef gai_strerror
+#		undef gai_strerror
+#		define gai_strerror gai_strerrorA
+#	endif
 #else
 	/* Windows sockets compatibility defines */
 #	define INVALID_SOCKET (-1)
@@ -77,4 +85,6 @@ static inline int GetLastError(void) {
 #endif /* _WIN32 */
 
 void setSocketDefaults(SOCKET fd);
-
+int getSocketType(int protocol);
+int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b);
+uint16_t getPort(struct addrinfo* ai);
