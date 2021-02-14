@@ -277,7 +277,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	struct addrinfo *servinfo;
 	int ret = getaddrinfo(bindAddress, bindPort, &hints, &servinfo);
 	if (ret != 0) {
-		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerrorA(ret));
 		exit(1);
 	}
 
@@ -326,7 +326,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	hints.ai_flags = AI_PASSIVE;
 	ret = getaddrinfo(connectAddress, connectPort, &hints, &servinfo);
 	if (ret != 0) {
-		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerrorA(ret));
 		freeaddrinfo(si.fromAddrInfo);
 		closesocket(si.fd);
 		exit(1);
@@ -342,7 +342,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 
 		ret = getaddrinfo(sourceAddress, NULL, &hints, &servinfo);
 		if (ret != 0) {
-			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
+			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerrorA(ret));
 			freeaddrinfo(si.fromAddrInfo);
 			freeaddrinfo(si.toAddrInfo);
 			exit(1);
