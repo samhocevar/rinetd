@@ -261,8 +261,8 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
                int serverTimeout, char *sourceAddress)
 {
 	ServerInfo si = {
-		.fromHost = bindAddress,
-		.toHost = connectAddress,
+		.fromHost = strdup(bindAddress),
+		.toHost = strdup(connectAddress),
 		.serverTimeout = serverTimeout,
 	};
 

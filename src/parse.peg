@@ -53,7 +53,13 @@ server-rule  =  bind-address - bind-port - connect-address - connect-port (-? se
 		yy->connectAddress, yy->connectPort, yy->connectProto,
 		yy->serverTimeout > 0 ? yy->serverTimeout : RINETD_DEFAULT_UDP_TIMEOUT,
 		yy->sourceAddress);
+	free(yy->bindAddress);
+	free(yy->connectAddress);
+	free(yy->sourceAddress);
 	yy->bindAddress = yy->connectAddress = yy->sourceAddress = NULL;
+	free(yy->bindPort);
+	free(yy->connectPort);
+	yy->bindPort = yy->connectPort = NULL;
 	yy->serverTimeout = 0;
 }
 
@@ -66,13 +72,11 @@ server-options   =  "[" -? option-list -? "]"
 option-list     =  option (-? ',' -? option-list)?
 option          =  (option-timeout | option-source)
 option-timeout  =  "timeout" -? "=" -? < number >    { yy->serverTimeout = atoi(yytext); }
-option-source   =  "src"     -? "=" -? < address >   { free(yy->sourceAddress);
-                                                       yy->sourceAddress = strdup(yytext); }
+option-source   =  "src"     -? "=" -? < address >   { yy->sourceAddress = strdup(yytext); }
 
 full-port  =  port proto
 
-port   = < (number | service) >   { free(yy->tmpPort);
-                                    yy->tmpPort = strdup(yytext); }
+port   = < (number | service) >   { yy->tmpPort = strdup(yytext); }
 proto  = '/tcp'                   { yy->tmpProto = IPPROTO_TCP; }
        | '/udp'                   { yy->tmpProto = IPPROTO_UDP; }
        | ''                       { yy->tmpProto = IPPROTO_TCP; }
@@ -170,8 +174,6 @@ void parseConfiguration(char const *file)
 			"on file %s, line %d.\n", file, -1);
 		exit(1);
 	}
-	free(ctx.sourceAddress);
-	free(ctx.tmpPort);
 	yyrelease(&ctx);
 
 	fclose(in);
