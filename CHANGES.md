@@ -1,20 +1,24 @@
-## Version 0.71
+## Version 0.72 (2021/02/16)
+
+ * fixed a configuration parsing bug making 0.71 almost unusable
+
+## Version 0.71 (2021/02/14)
 
  * IPv6 support
- * fix a display overflow in data usage statistics
+ * fixed a display overflow in data usage statistics
  * made the configuration parser more tolerant with service names that contain
    dashes (e.g. snmp-trap) or hostnames with underscores (e.g. \_http.example.com).
  * create the log file if it does not exist
  * new Visual Studio project file
 
-## Version 0.70
+## Version 0.70 (2017/09/09)
 
  * UDP support
  * source address binding support
  * use a real grammar for the configuration file and get rid of the hand-made
    parser
 
-## Version 0.63
+## Version 0.63 (2017/07/19)
 
  * added a `-f` flag to run in the foreground
  * quit cleanly when `SIGINT` is received
