@@ -267,10 +267,9 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	};
 
 	/* Make a server socket */
-	struct addrinfo hints = getAddrInfoHint(bindProtocol), *ai;
-	int ret = getaddrinfo(bindAddress, bindPort, &hints, &ai);
+	struct addrinfo *ai;
+	int ret = getAddrInfoWithProto(bindAddress, bindPort, bindProtocol, &ai);
 	if (ret != 0) {
-		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
 		exit(1);
 	}
 
@@ -308,10 +307,8 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	si.fromAddrInfo = ai;
 
 	/* Resolve destination address. */
-	hints = getAddrInfoHint(connectProtocol);
-	ret = getaddrinfo(connectAddress, connectPort, &hints, &ai);
+	ret = getAddrInfoWithProto(connectAddress, connectPort, connectProtocol, &ai);
 	if (ret != 0) {
-		fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
 		freeaddrinfo(si.fromAddrInfo);
 		closesocket(si.fd);
 		exit(1);
@@ -320,10 +317,8 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 
 	/* Resolve source address if applicable. */
 	if (sourceAddress) {
-		hints = getAddrInfoHint(connectProtocol);
-		ret = getaddrinfo(sourceAddress, NULL, &hints, &ai);
+		ret = getAddrInfoWithProto(sourceAddress, NULL, connectProtocol, &ai);
 		if (ret != 0) {
-			fprintf(stderr, "rinetd: getaddrinfo error: %s\n", gai_strerror(ret));
 			freeaddrinfo(si.fromAddrInfo);
 			freeaddrinfo(si.toAddrInfo);
 			exit(1);

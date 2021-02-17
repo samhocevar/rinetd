@@ -10,6 +10,7 @@
 #	include <config.h>
 #endif
 
+#include <stdio.h>
 #include "net.h"
 
 void setSocketDefaults(SOCKET fd) {
@@ -32,13 +33,23 @@ void setSocketDefaults(SOCKET fd) {
 #endif
 }
 
-struct addrinfo getAddrInfoHint(int protocol) {
-	return (struct addrinfo) {
+int getAddrInfoWithProto(char *address, char *port, int protocol, struct addrinfo **ai)
+{
+	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_protocol = protocol,
 		.ai_socktype = protocol == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM,
 		.ai_flags = AI_PASSIVE,
 	};
+
+	int ret = getaddrinfo(address, port, &hints, ai);
+	if (ret != 0) {
+		fprintf(stderr, "rinetd: cannot resolve host \"%s\" port %s "
+				"(getaddrinfo() error: %s)\n",
+			address, port ? port : "<null>", gai_strerror(ret));
+	}
+
+	return ret;
 }
 
 int sameSocketAddress(struct sockaddr_storage *a, struct sockaddr_storage *b) {
