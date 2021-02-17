@@ -139,9 +139,10 @@ address  =  ipv4 | ipv6 | hostname
 pattern  =  (hexdigit | '[' | ']' | ':' | '.' | [*?] )+
 number   =  digit+
 
-ipv4     =  number '.' number '.' number '.' number | '0'
-ipv6     =  (hexdigit | ':')+ | '[' (hexdigit | ':')+ ']'
-hostname =  (label '.')* name '.'?
+ipv4      =  number '.' number '.' number '.' number | '0'
+ipv6      = '[' bare_ipv6 ']' | bare_ipv6
+bare_ipv6 =  (hexdigit | ':')* ':' (hexdigit | ':')* # Must have at least one ':'
+hostname  =  (label '.')* name '.'?
 
 
 name     =  id ('-' | id | digit)*
