@@ -1,3 +1,8 @@
+## Version 0.73 (2021/02/19)
+
+ * improve error reporting
+ * fixed another configuration parsing bug
+
 ## Version 0.72 (2021/02/16)
 
  * fixed a configuration parsing bug making 0.71 almost unusable
