@@ -28,9 +28,11 @@
 #	elif HAVE_SYS_TIME_H
 #		include <sys/time.h>
 #	endif
+#	include <syslog.h>
 #endif /* _WIN32 */
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -188,12 +190,38 @@ int main(int argc, char *argv[])
 		registerPID(pidLogFileName ? pidLogFileName : RINETD_PID_FILE);
 	}
 
-	syslog(LOG_INFO, "Starting redirections...\n");
+	logInfo("Starting redirections...\n");
 	while (1) {
 		selectPass();
 	}
 
 	return 0;
+}
+
+void logError(char const *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+#if !_WIN32
+	if (!options.foreground)
+		vsyslog(LOG_ERR, fmt, ap);
+	else
+#endif
+		vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
+void logInfo(char const *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+#if !_WIN32
+	if (!options.foreground)
+		vsyslog(LOG_INFO, fmt, ap);
+	else
+#endif
+		vfprintf(stderr, fmt, ap);
+	va_end(ap);
 }
 
 static void clearConfiguration(void) {
@@ -250,7 +278,7 @@ static void readConfiguration(char const *file) {
 		if (logFile) {
 			setvbuf(logFile, NULL, _IONBF, 0);
 		} else {
-			syslog(LOG_ERR, "could not open %s to append (%m).\n",
+			logError("could not open %s to append (%m).\n",
 				logFileName);
 		}
 	}
@@ -275,7 +303,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 
 	si.fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 	if (si.fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "couldn't create server socket! (%m)\n");
+		logError("couldn't create server socket! (%m)\n");
 		freeaddrinfo(ai);
 		exit(1);
 	}
@@ -284,7 +312,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	setsockopt(si.fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&tmp, sizeof(tmp));
 
 	if (bind(si.fd, ai->ai_addr, ai->ai_addrlen) == SOCKET_ERROR) {
-		syslog(LOG_ERR, "couldn't bind to address %s port %s (%m)\n",
+		logError("couldn't bind to address %s port %s (%m)\n",
 			bindAddress, bindPort);
 		closesocket(si.fd);
 		freeaddrinfo(ai);
@@ -294,7 +322,7 @@ void addServer(char *bindAddress, char *bindPort, int bindProtocol,
 	if (bindProtocol == IPPROTO_TCP) {
 		if (listen(si.fd, RINETD_LISTEN_BACKLOG) == SOCKET_ERROR) {
 			/* Warn -- don't exit. */
-			syslog(LOG_ERR, "couldn't listen to address %s port %s (%m)\n",
+			logError("couldn't listen to address %s port %s (%m)\n",
 				bindAddress, bindPort);
 			/* XXX: check whether this is correct */
 			closesocket(si.fd);
@@ -408,7 +436,7 @@ static ConnectionInfo *findAvailableConnection(void)
 	int oldTotal = coTotal;
 	setConnectionCount(coTotal * 4 / 3 + 8);
 	if (coTotal == oldTotal) {
-		syslog(LOG_ERR, "not enough memory to add slots. "
+		logError("not enough memory to add slots. "
 			"Currently %d slots.\n", coTotal);
 		/* Go back to the previous total number of slots */
 		return NULL;
@@ -645,7 +673,7 @@ static void handleAccept(ServerInfo const *srv)
 		/* In TCP mode, get remote address using accept(). */
 		nfd = accept(srv->fd, (struct sockaddr *)&addr, &addrlen);
 		if (nfd == INVALID_SOCKET) {
-			syslog(LOG_ERR, "accept(%llu): %m\n", (long long unsigned int)srv->fd);
+			logError("accept(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -666,7 +694,7 @@ static void handleAccept(ServerInfo const *srv)
 			if (GetLastError() == WSAEINPROGRESS) {
 				return;
 			}
-			syslog(LOG_ERR, "recvfrom(%llu): %m\n", (long long unsigned int)srv->fd);
+			logError("recvfrom(%llu): %m\n", (long long unsigned int)srv->fd);
 			logEvent(NULL, srv, logAcceptFailed);
 			return;
 		}
@@ -725,7 +753,7 @@ static void handleAccept(ServerInfo const *srv)
 	struct addrinfo* to = srv->toAddrInfo;
 	cnx->local.fd = socket(to->ai_family, to->ai_socktype, to->ai_protocol);
 	if (cnx->local.fd == INVALID_SOCKET) {
-		syslog(LOG_ERR, "socket(): %m\n");
+		logError("socket(): %m\n");
 		if (cnx->remote.protocol == IPPROTO_TCP)
 			closesocket(cnx->remote.fd);
 		cnx->remote.fd = INVALID_SOCKET;
@@ -741,7 +769,7 @@ static void handleAccept(ServerInfo const *srv)
 	if (srv->sourceAddrInfo) {
 		if (bind(cnx->local.fd, srv->sourceAddrInfo->ai_addr,
 				srv->sourceAddrInfo->ai_addrlen) == SOCKET_ERROR) {
-			syslog(LOG_ERR, "bind(): %m\n");
+			logError("bind(): %m\n");
 		}
 	}
 
@@ -861,7 +889,7 @@ RETSIGTYPE plumber(int s)
 RETSIGTYPE hup(int s)
 {
 	(void)s;
-	syslog(LOG_INFO, "Received SIGHUP, reloading configuration...\n");
+	logInfo("Received SIGHUP, reloading configuration...\n");
 	/* Learn the new rules */
 	clearConfiguration();
 	readConfiguration(options.conf_file);
@@ -891,8 +919,6 @@ void registerPID(char const *pid_file_name)
 	FILE *pid_file = fopen(pid_file_name, "w");
 	if (pid_file == NULL) {
 		/* non-fatal, non-Linux may lack /var/run... */
-		fprintf(stderr, "rinetd: Couldn't write to "
-			"%s. PID was not logged.\n", pid_file_name);
 		goto error;
 	} else {
 		fprintf(pid_file, "%d\n", getpid());
@@ -902,8 +928,8 @@ void registerPID(char const *pid_file_name)
 	}
 	return;
 error:
-	syslog(LOG_ERR, "Couldn't write to "
-		"%s. PID was not logged (%m).\n", pid_file_name);
+	logError("rinetd: Couldn't write to %s. PID was not logged (%m).\n",
+		pid_file_name);
 #else
 	/* add other systems with wherever they register processes */
 	(void)pid_file_name;
@@ -942,7 +968,7 @@ static void logEvent(ConnectionInfo const *cnx, ServerInfo const *srv, int resul
 	}
 
 	if (result==logNotAllowed || result==logDenied)
-		syslog(LOG_INFO, "%s %s\n"
+		logInfo("%s %s\n"
 			, addressText
 			, logMessages[result]);
 	if (logFile) {
@@ -1009,7 +1035,7 @@ static int readArgs (int argc, char **argv, RinetdOptions *options)
 			case 'c':
 				options->conf_file = optarg;
 				if (!options->conf_file) {
-					syslog(LOG_ERR, "Not enough memory to "
+					fprintf(stderr, "Not enough memory to "
 						"launch rinetd.\n");
 					exit(1);
 				}

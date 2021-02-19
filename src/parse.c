@@ -373,7 +373,7 @@ YY_ACTION(void) yy_1_invalid_syntax(yycontext *yy, char *yytext, int yyleng)
   {
 #line 131
   
-	fprintf(stderr, "rinetd: invalid syntax at line %d: %s\n",
+	logError("rinetd: invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
 	PARSE_ERROR; /* FIXME */
 ;
@@ -1412,8 +1412,7 @@ void parseConfiguration(char const *file)
 	memset(&ctx, 0, sizeof(yycontext));
 	ctx.fp = in;
 	if (!yyparse(&ctx)) {
-		syslog(LOG_ERR, "invalid syntax "
-			"on file %s, line %d.\n", file, -1);
+		logError("invalid syntax on file %s, line %d.\n", file, -1);
 		exit(1);
 	}
 	yyrelease(&ctx);

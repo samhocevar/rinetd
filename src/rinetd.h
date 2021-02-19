@@ -8,17 +8,6 @@
 
 #pragma once
 
-/* Syslog feature */
-
-#if _WIN32
-#	include <stdio.h>
-#	define syslog fprintf
-#	define LOG_ERR stderr
-#	define LOG_INFO stdout
-#else
-#	include <syslog.h>
-#endif /* _WIN32 */
-
 #include <stdint.h>
 
 /* Constants */
@@ -46,6 +35,8 @@ extern FILE *logFile;
 
 /* Functions */
 
+void logError(char const *fmt, ...);
+void logInfo(char const *fmt, ...);
 void addServer(char *bindAddress, char *bindPort, int bindProtocol,
                char *connectAddress, char *connectPort, int connectProtocol,
                int serverTimeout, char *sourceAddress);
