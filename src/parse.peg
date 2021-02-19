@@ -31,6 +31,10 @@
 	result = (EOF == yyc) ? 0 : (*(buf) = yyc, 1); \
 }
 #define PARSE_ERROR exit(1);
+#define MEMORY_ERROR { \
+		logError("could not allocate memory when parsing configuration.\n"); \
+		exit(1); \
+	}
 
 #if defined __clang__
 #pragma clang diagnostic ignored "-Wunused-parameter"
@@ -86,11 +90,11 @@ auth-rule  =  auth-key - < pattern >
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
 	if (!allRules) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 	allRules[allRulesCount].pattern = strdup(yytext);
 	if (!allRules[allRulesCount].pattern) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 	allRules[allRulesCount].type = yy->isAuthAllow ? allowRule : denyRule;
 	if (seTotal > 0) {
@@ -110,7 +114,7 @@ logfile  =  "logfile" - < filename >
 {
 	logFileName = strdup(yytext);
 	if (!logFileName) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 }
 
@@ -118,7 +122,7 @@ pidlogfile  =  "pidlogfile" - < filename >
 {
 	pidLogFileName = strdup(yytext);
 	if (!pidLogFileName) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 }
 
@@ -129,7 +133,7 @@ logcommon  =  "logcommon"
 
 invalid_syntax  =  < (!eol .)+ > eol
 {
-	logError("rinetd: invalid syntax at line %d: %s\n",
+	logError("invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
 	PARSE_ERROR; /* FIXME */
 }
@@ -164,14 +168,15 @@ void parseConfiguration(char const *file)
 {
 	FILE *in = fopen(file, "r");
 	if (!in) {
-		PARSE_ERROR;
+		logError("could not open configuration file %s.\n", file);
+		exit(1);
 	}
 
 	yycontext ctx;
 	memset(&ctx, 0, sizeof(yycontext));
 	ctx.fp = in;
 	if (!yyparse(&ctx)) {
-		logError("invalid syntax on file %s, line %d.\n", file, -1);
+		logError("invalid syntax in file %s, line %d.\n", file, -1);
 		exit(1);
 	}
 	yyrelease(&ctx);

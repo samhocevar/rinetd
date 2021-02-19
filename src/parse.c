@@ -30,6 +30,10 @@
 	result = (EOF == yyc) ? 0 : (*(buf) = yyc, 1); \
 }
 #define PARSE_ERROR exit(1);
+#define MEMORY_ERROR { \
+		logError("could not allocate memory when parsing configuration.\n"); \
+		exit(1); \
+	}
 
 #if defined __clang__
 #pragma clang diagnostic ignored "-Wunused-parameter"
@@ -357,7 +361,7 @@ YY_ACTION(void) yy_1_sol(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_sol\n"));
   {
-#line 157
+#line 161
    ++yy->currentLine; ;
   }
 #undef yythunkpos
@@ -371,9 +375,9 @@ YY_ACTION(void) yy_1_invalid_syntax(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_invalid_syntax\n"));
   {
-#line 131
+#line 135
   
-	logError("rinetd: invalid syntax at line %d: %s\n",
+	logError("invalid syntax at line %d: %s\n",
 	        yy->currentLine, yytext);
 	PARSE_ERROR; /* FIXME */
 ;
@@ -389,7 +393,7 @@ YY_ACTION(void) yy_1_logcommon(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logcommon\n"));
   {
-#line 126
+#line 130
   
 	logFormatCommon = 1;
 ;
@@ -405,11 +409,11 @@ YY_ACTION(void) yy_1_pidlogfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_pidlogfile\n"));
   {
-#line 118
+#line 122
   
 	pidLogFileName = strdup(yytext);
 	if (!pidLogFileName) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 ;
   }
@@ -424,11 +428,11 @@ YY_ACTION(void) yy_1_logfile(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_logfile\n"));
   {
-#line 110
+#line 114
   
 	logFileName = strdup(yytext);
 	if (!logFileName) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 ;
   }
@@ -443,7 +447,7 @@ YY_ACTION(void) yy_1_auth_key(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_key\n"));
   {
-#line 107
+#line 111
    yy->isAuthAllow = (yytext[0] == 'a'); ;
   }
 #undef yythunkpos
@@ -457,16 +461,16 @@ YY_ACTION(void) yy_1_auth_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_auth_rule\n"));
   {
-#line 85
+#line 89
   
 	allRules = (Rule *)
 		realloc(allRules, sizeof(Rule) * (allRulesCount + 1));
 	if (!allRules) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 	allRules[allRulesCount].pattern = strdup(yytext);
 	if (!allRules[allRulesCount].pattern) {
-		PARSE_ERROR;
+		MEMORY_ERROR;
 	}
 	allRules[allRulesCount].type = yy->isAuthAllow ? allowRule : denyRule;
 	if (seTotal > 0) {
@@ -491,7 +495,7 @@ YY_ACTION(void) yy_3_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_3_proto\n"));
   {
-#line 82
+#line 86
    yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
@@ -505,7 +509,7 @@ YY_ACTION(void) yy_2_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_2_proto\n"));
   {
-#line 81
+#line 85
    yy->tmpProto = IPPROTO_UDP; ;
   }
 #undef yythunkpos
@@ -519,7 +523,7 @@ YY_ACTION(void) yy_1_proto(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_proto\n"));
   {
-#line 80
+#line 84
    yy->tmpProto = IPPROTO_TCP; ;
   }
 #undef yythunkpos
@@ -533,7 +537,7 @@ YY_ACTION(void) yy_1_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_port\n"));
   {
-#line 79
+#line 83
    yy->tmpPort = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -547,7 +551,7 @@ YY_ACTION(void) yy_1_option_source(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_source\n"));
   {
-#line 75
+#line 79
    yy->sourceAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -561,7 +565,7 @@ YY_ACTION(void) yy_1_option_timeout(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_option_timeout\n"));
   {
-#line 74
+#line 78
    yy->serverTimeout = atoi(yytext); ;
   }
 #undef yythunkpos
@@ -575,7 +579,7 @@ YY_ACTION(void) yy_1_connect_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_port\n"));
   {
-#line 69
+#line 73
    yy->connectPort = yy->tmpPort; yy->connectProto = yy->tmpProto; ;
   }
 #undef yythunkpos
@@ -589,7 +593,7 @@ YY_ACTION(void) yy_1_bind_port(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_port\n"));
   {
-#line 68
+#line 72
    yy->bindPort = yy->tmpPort; yy->bindProto = yy->tmpProto; ;
   }
 #undef yythunkpos
@@ -603,7 +607,7 @@ YY_ACTION(void) yy_1_connect_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_connect_address\n"));
   {
-#line 67
+#line 71
    yy->connectAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -617,7 +621,7 @@ YY_ACTION(void) yy_1_bind_address(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_bind_address\n"));
   {
-#line 66
+#line 70
    yy->bindAddress = strdup(yytext); ;
   }
 #undef yythunkpos
@@ -631,7 +635,7 @@ YY_ACTION(void) yy_1_server_rule(yycontext *yy, char *yytext, int yyleng)
 #define yythunkpos yy->__thunkpos
   yyprintf((stderr, "do yy_1_server_rule\n"));
   {
-#line 51
+#line 55
   
 	addServer(yy->bindAddress, yy->bindPort, yy->bindProto,
 		yy->connectAddress, yy->connectPort, yy->connectProto,
@@ -1398,21 +1402,22 @@ YY_PARSE(yycontext *) YYRELEASE(yycontext *yyctx)
 }
 
 #endif
-#line 161 "parse.peg"
+#line 165 "parse.peg"
 
 
 void parseConfiguration(char const *file)
 {
 	FILE *in = fopen(file, "r");
 	if (!in) {
-		PARSE_ERROR;
+		logError("could not open configuration file %s.\n", file);
+		exit(1);
 	}
 
 	yycontext ctx;
 	memset(&ctx, 0, sizeof(yycontext));
 	ctx.fp = in;
 	if (!yyparse(&ctx)) {
-		logError("invalid syntax on file %s, line %d.\n", file, -1);
+		logError("invalid syntax in file %s, line %d.\n", file, -1);
 		exit(1);
 	}
 	yyrelease(&ctx);

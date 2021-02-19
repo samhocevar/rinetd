@@ -108,10 +108,12 @@ enum {
 	logDenied,
 };
 
-RinetdOptions options = {
+static RinetdOptions options = {
 	RINETD_CONFIG_FILE,
 	0,
 };
+
+static int forked = 0;
 
 static void selectPass(void);
 static void handleWrite(ConnectionInfo *cnx, Socket *socket, Socket *other_socket);
@@ -160,15 +162,19 @@ int main(int argc, char *argv[])
 
 	readArgs(argc, argv, &options);
 
+	if (!options.foreground) {
 #if HAVE_DAEMON && !DEBUG
-	if (!options.foreground && daemon(0, 0) != 0) {
-		exit(0);
-	}
+		if (daemon(0, 0) != 0) {
+			exit(0);
+		}
+		forked = 1;
 #elif HAVE_FORK && !DEBUG
-	if (!options.foreground && fork() != 0) {
-		exit(0);
-	}
+		if (fork() != 0) {
+			exit(0);
+		}
+		forked = 1;
 #endif
+	}
 
 #if HAVE_SIGACTION
 	struct sigaction act;
@@ -190,7 +196,7 @@ int main(int argc, char *argv[])
 		registerPID(pidLogFileName ? pidLogFileName : RINETD_PID_FILE);
 	}
 
-	logInfo("Starting redirections...\n");
+	logInfo("starting redirections...\n");
 	while (1) {
 		selectPass();
 	}
@@ -203,11 +209,14 @@ void logError(char const *fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 #if !_WIN32
-	if (!options.foreground)
+	if (forked)
 		vsyslog(LOG_ERR, fmt, ap);
 	else
 #endif
+	{
+		fprintf(stderr, "rinetd error: ");
 		vfprintf(stderr, fmt, ap);
+	}
 	va_end(ap);
 }
 
@@ -216,11 +225,14 @@ void logInfo(char const *fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 #if !_WIN32
-	if (!options.foreground)
+	if (forked)
 		vsyslog(LOG_INFO, fmt, ap);
 	else
 #endif
+	{
+		fprintf(stderr, "rinetd: ");
 		vfprintf(stderr, fmt, ap);
+	}
 	va_end(ap);
 }
 
@@ -889,7 +901,7 @@ RETSIGTYPE plumber(int s)
 RETSIGTYPE hup(int s)
 {
 	(void)s;
-	logInfo("Received SIGHUP, reloading configuration...\n");
+	logInfo("received SIGHUP, reloading configuration...\n");
 	/* Learn the new rules */
 	clearConfiguration();
 	readConfiguration(options.conf_file);
@@ -928,7 +940,7 @@ void registerPID(char const *pid_file_name)
 	}
 	return;
 error:
-	logError("rinetd: Couldn't write to %s. PID was not logged (%m).\n",
+	logError("couldn't write to %s. PID was not logged (%m).\n",
 		pid_file_name);
 #else
 	/* add other systems with wherever they register processes */
