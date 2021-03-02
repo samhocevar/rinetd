@@ -474,7 +474,7 @@ YY_ACTION(void) yy_1_auth_rule(yycontext *yy, char *yytext, int yyleng)
 	}
 	allRules[allRulesCount].type = yy->isAuthAllow ? allowRule : denyRule;
 	if (seTotal > 0) {
-		if (seInfo[seTotal - 1].rulesStart == 0) {
+		if (seInfo[seTotal - 1].rulesStart == 0 && seInfo[seTotal - 1].rulesCount == 0) {
 			seInfo[seTotal - 1].rulesStart = allRulesCount;
 		}
 		++seInfo[seTotal - 1].rulesCount;

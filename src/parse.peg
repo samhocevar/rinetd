@@ -98,7 +98,7 @@ auth-rule  =  auth-key - < pattern >
 	}
 	allRules[allRulesCount].type = yy->isAuthAllow ? allowRule : denyRule;
 	if (seTotal > 0) {
-		if (seInfo[seTotal - 1].rulesStart == 0) {
+		if (seInfo[seTotal - 1].rulesStart == 0 && seInfo[seTotal - 1].rulesCount == 0) {
 			seInfo[seTotal - 1].rulesStart = allRulesCount;
 		}
 		++seInfo[seTotal - 1].rulesCount;
