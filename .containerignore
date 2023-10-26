@@ -1,0 +1,25 @@
+# container build
+container/
+
+# from .gitignore
+.auto
+.deps
+.dirstamp
+Makefile
+Makefile.in
+stamp-*
+aclocal.m4
+autom4te.cache
+config.h
+config.h.in
+config.log
+config.status
+configure
+
+*.o
+rinetd
+rinetd.exe
+
+*.vcxproj.user
+Debug
+Release
