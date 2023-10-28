@@ -10,11 +10,11 @@ jobs:
       - name: "Check out repository code: ${{ github.ref }} ${{ github.repository }"
         uses: actions/checkout@v4
 
-      # - name: "🖥️ Container build (PR check, not main or tag)"
-      #   if: github.ref != 'refs/heads/main' && github.ref != 'refs/tags/*'
-      #   run: |
-      #     cd ./container/
-      #     make build
+      - name: "🖥️ Container build (PR check, not main or tag)"
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/tags/*'
+        run: |
+          cd ./container/
+          make build
 
       - name: "🔑 Authenticate with Quay.io"
         # if: github.ref == 'refs/heads/main' || github.ref == 'refs/tags/*'
