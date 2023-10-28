@@ -26,10 +26,10 @@ RUN set -x \
 
 # ==========================
 # Final image
-FROM docker.io/redhat/ubi9:latest
+FROM docker.io/redhat/ubi9-minimal:latest
 
 RUN set -x \
-    && dnf upgrade -y \
-    && dnf clean all
+    && microdnf upgrade -y \
+    && microdnf clean all
 
 COPY --from=builder /usr/local/sbin/rinetd /usr/local/sbin/rinetd
