@@ -1,0 +1,34 @@
+name: Container build and push
+run-name: ${{ github.actor }} triggered a container build and push
+on: [push]
+jobs:
+  Container-Build-and-Push:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - run: echo "🐧 This job is now running on a ${{ runner.os }} server."
+      - name: "Check out repository code: ${{ github.ref }} ${{ github.repository }"
+        uses: actions/checkout@v4
+
+      # - name: "🖥️ Container build (PR check, not main or tag)"
+      #   if: github.ref != 'refs/heads/main' && github.ref != 'refs/tags/*'
+      #   run: |
+      #     cd ./container/
+      #     make build
+
+      - name: "🔑 Authenticate with Quay.io"
+        # if: github.ref == 'refs/heads/main' || github.ref == 'refs/tags/*'
+        uses: docker/login-action@v1
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: "🖥️ Container build release (main or tag)"
+        # if: github.ref == 'refs/heads/main' || github.ref == 'refs/tags/*'
+        run: |
+          cd ./container/
+          export IMAGE_TAG=quay.io/thenets/rinetd:${{ github.sha }}
+          make build-release-and-push
+          export IMAGE_TAG=quay.io/thenets/rinetd:latest
+          make build-release-and-push
