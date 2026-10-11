@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    if ! getent group rinetd >/dev/null; then addgroup --system rinetd; fi
+    if ! getent passwd rinetd >/dev/null; then adduser --system --ingroup rinetd --no-create-home --disabled-login rinetd; fi
+fi
+#DEBHELPER#

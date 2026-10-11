@@ -1,0 +1,14 @@
+Source: rinetd-ng
+Section: net
+Priority: optional
+Maintainer: rinetd-ng contributors <noreply@example.invalid>
+Build-Depends: debhelper-compat (= 13), gcc, make, autoconf, automake, python3
+Standards-Version: 4.6.2
+Homepage: https://github.com/samhocevar/rinetd
+Rules-Requires-Root: no
+
+Package: rinetd-ng
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, systemd
+Description: TCP/UDP forwarding daemon (rinetd derivative)
+ An experimental packaging of rinetd-ng, retaining rinetd.conf compatibility.

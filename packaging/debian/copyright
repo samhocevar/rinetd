@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: rinetd-ng
+Source: https://github.com/samhocevar/rinetd
+Files: upstream/*
+Copyright: 1997-1999 Thomas Boutell, 2003-2021 Sam Hocevar and contributors
+License: GPL-2+
+Files: *
+Copyright: rinetd-ng contributors; original notices retained
+License: GPL-2+
+License: GPL-2+
+ Licensed under the GNU General Public License, version 2 or later.
+ See upstream/COPYING for full text in the built source tree.

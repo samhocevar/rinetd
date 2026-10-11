@@ -1,0 +1,4 @@
+# Only localhost may access this forwarding rule
+127.0.0.1 18080 127.0.0.1 8080
+allow 127.0.0.1
+# Do not add deny *: deny rules override allow matches.

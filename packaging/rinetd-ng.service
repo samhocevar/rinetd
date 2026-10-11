@@ -1,0 +1,35 @@
+[Unit]
+Description=rinetd-ng TCP/UDP redirector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rinetd
+Group=rinetd
+ExecStartPre=/usr/libexec/rinetd-ng-config-check -c /etc/rinetd.conf
+ExecStart=/usr/sbin/rinetd -f -c /etc/rinetd.conf
+# This release does not offer safe atomic reload. Restart is required.
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+RuntimeDirectory=rinetd-ng
+RuntimeDirectoryMode=0750
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

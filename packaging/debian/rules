@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+override_dh_auto_build:
+	./tools/build.sh
+override_dh_auto_install:
+	install -Dm0755 upstream/rinetd debian/rinetd-ng/usr/sbin/rinetd
+	install -Dm0755 bin/rinetd-ng-config-check debian/rinetd-ng/usr/libexec/rinetd-ng-config-check
+	install -Dm0644 config/rinetd.conf.example debian/rinetd-ng/etc/rinetd.conf
+	install -Dm0644 packaging/rinetd-ng.service debian/rinetd-ng/lib/systemd/system/rinetd-ng.service
+	install -Dm0644 upstream/COPYING debian/rinetd-ng/usr/share/doc/rinetd-ng/COPYING

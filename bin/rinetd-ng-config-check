@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Conservative rinetd configuration checker; no networking or execution."""
+import argparse
+import ipaddress
+import pathlib
+import re
+import sys
+
+DIRECTIVES = {'allow', 'deny', 'logfile', 'pidlogfile', 'logcommon'}
+ADDRESS = re.compile(r'^[A-Za-z0-9_.:\[\]%-]+$')
+PORT = re.compile(r'^(\d{1,5}|[A-Za-z][A-Za-z0-9_-]*)(/(tcp|udp))?$', re.I)
+
+def validate(path):
+    problems, warnings, rules = [], [], 0
+    try:
+        lines = pathlib.Path(path).read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeError) as e:
+        return [f'{path}: {e}'], [], 0
+    seen_forward = False
+    rules_in_section = []
+    def check_acl_section():
+        if any(key == 'deny' and pattern == '*' for key, pattern, _ in rules_in_section):
+            if any(key == 'allow' for key, _, _ in rules_in_section):
+                warnings.append(f'{path}: deny * overrides allow rules in the same section; all clients will be blocked')
+        rules_in_section.clear()
+    for lineno, original in enumerate(lines, 1):
+        line = original.partition('#')[0].strip()
+        if not line:
+            continue
+        fields = line.split()
+        key = fields[0].lower()
+        at = f'{path}:{lineno}'
+        if key in ('allow', 'deny'):
+            if len(fields) != 2:
+                problems.append(f'{at}: {key} requires exactly one pattern')
+            elif key == 'allow' and fields[1] in ('0.0.0.0', '::', '[::]'):
+                warnings.append(f'{at}: allow {fields[1]} matches only the unspecified address; use allow * for all clients')
+            if len(fields) == 2:
+                rules_in_section.append((key, fields[1], lineno))
+            continue
+        if key in ('logfile', 'pidlogfile'):
+            if len(fields) < 2:
+                problems.append(f'{at}: {key} requires a path')
+            continue
+        if key == 'logcommon':
+            if len(fields) != 1:
+                problems.append(f'{at}: logcommon takes no arguments')
+            continue
+        if len(fields) < 4 or len(fields) > 5:
+            problems.append(f'{at}: expected bind-address bind-port target-address target-port [options]')
+            continue
+        check_acl_section()
+        bind, port, target, dest = fields[:4]
+        for value, label in ((bind, 'bind address'), (target, 'target address')):
+            if not ADDRESS.fullmatch(value):
+                problems.append(f'{at}: invalid {label}: {value}')
+        for value, label in ((port, 'bind port'), (dest, 'target port')):
+            m = PORT.fullmatch(value)
+            if not m:
+                problems.append(f'{at}: invalid {label}: {value}')
+            elif m.group(1).isdigit() and not 1 <= int(m.group(1)) <= 65535:
+                problems.append(f'{at}: {label} out of range: {value}')
+        if len(fields) == 5:
+            opt = fields[4]
+            if not (opt.startswith('[') and opt.endswith(']')):
+                problems.append(f'{at}: options must be enclosed in []')
+            else:
+                for assignment in opt[1:-1].split(','):
+                    if '=' not in assignment:
+                        problems.append(f'{at}: invalid option {assignment}')
+                        continue
+                    name, value = (v.strip() for v in assignment.split('=', 1))
+                    if name not in ('timeout', 'src') or not value:
+                        problems.append(f'{at}: unsupported/empty option: {name}')
+                    if name == 'timeout' and (not value.isdigit() or int(value) <= 0):
+                        problems.append(f'{at}: timeout must be positive')
+        if not seen_forward and bind in ('0.0.0.0', '::', '[::]'):
+            warnings.append(f'{at}: wildcard bind: restrict using firewall and allow rules')
+        seen_forward = True
+        rules += 1
+    check_acl_section()
+    if rules == 0:
+        warnings.append(f'{path}: no forwarding rules')
+    return problems, warnings, rules
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('-c', '--conf-file', default='/etc/rinetd.conf')
+    p.add_argument('--strict', action='store_true', help='treat warnings as errors')
+    args = p.parse_args()
+    errors, warnings, count = validate(args.conf_file)
+    for item in errors:
+        print('ERROR:', item, file=sys.stderr)
+    for item in warnings:
+        print('WARNING:', item, file=sys.stderr)
+    if errors or args.strict and warnings:
+        return 1
+    print(f'OK: {count} forwarding rule(s) parsed; syntax pre-check passed')
+    print('NOTE: this is a pre-check; the upstream parser is authoritative')
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
